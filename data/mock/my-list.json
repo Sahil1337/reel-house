@@ -1,0 +1,10 @@
+[
+  { "profileId": 1, "contentType": "MOVIE", "tmdbId": 872585, "addedAt": "2026-10-16T10:00:00.000Z" },
+  { "profileId": 1, "contentType": "SERIES", "tmdbId": 95396, "addedAt": "2026-10-13T22:15:00.000Z" },
+  { "profileId": 1, "contentType": "MOVIE", "tmdbId": 335984, "addedAt": "2026-10-10T19:40:00.000Z" },
+  { "profileId": 1, "contentType": "SERIES", "tmdbId": 87108, "addedAt": "2026-10-07T08:25:00.000Z" },
+  { "profileId": 2, "contentType": "MOVIE", "tmdbId": 671, "addedAt": "2026-10-14T12:00:00.000Z" },
+  { "profileId": 2, "contentType": "SERIES", "tmdbId": 46260, "addedAt": "2026-10-09T18:30:00.000Z" },
+  { "profileId": 3, "contentType": "MOVIE", "tmdbId": 150540, "addedAt": "2026-10-12T09:00:00.000Z" },
+  { "profileId": 3, "contentType": "MOVIE", "tmdbId": 129, "addedAt": "2026-10-11T09:05:00.000Z" }
+]

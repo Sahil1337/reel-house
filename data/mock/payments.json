@@ -1,0 +1,10 @@
+[
+  {"paymentId": 8, "subscriptionId": 2, "paymentDate": "2026-10-10T09:30:00.000Z", "amount": 399, "paymentMode": "UPI", "transactionRef": "pay_RH0000000008", "status": "SUCCESS", "gatewayOrderId": "order_RH000000008"},
+  {"paymentId": 7, "subscriptionId": 2, "paymentDate": "2026-09-10T09:30:00.000Z", "amount": 399, "paymentMode": "UPI", "transactionRef": "pay_RH0000000007", "status": "SUCCESS", "gatewayOrderId": "order_RH000000007"},
+  {"paymentId": 6, "subscriptionId": 2, "paymentDate": "2026-08-11T10:05:00.000Z", "amount": 399, "paymentMode": "UPI", "transactionRef": "pay_RH0000000006", "status": "SUCCESS", "gatewayOrderId": "order_RH000000005"},
+  {"paymentId": 5, "subscriptionId": 2, "paymentDate": "2026-08-10T09:30:00.000Z", "amount": 399, "paymentMode": "CARD", "transactionRef": "pay_RH0000000005", "status": "FAILED", "gatewayOrderId": "order_RH000000005"},
+  {"paymentId": 4, "subscriptionId": 2, "paymentDate": "2026-07-10T09:30:00.000Z", "amount": 399, "paymentMode": "CARD", "transactionRef": "pay_RH0000000004", "status": "SUCCESS", "gatewayOrderId": "order_RH000000004"},
+  {"paymentId": 3, "subscriptionId": 1, "paymentDate": "2026-06-10T09:30:00.000Z", "amount": 179, "paymentMode": "UPI", "transactionRef": "pay_RH0000000003", "status": "SUCCESS", "gatewayOrderId": "order_RH000000003"},
+  {"paymentId": 2, "subscriptionId": 1, "paymentDate": "2026-05-10T09:30:00.000Z", "amount": 179, "paymentMode": "UPI", "transactionRef": "pay_RH0000000002", "status": "SUCCESS", "gatewayOrderId": "order_RH000000002"},
+  {"paymentId": 1, "subscriptionId": 1, "paymentDate": "2026-04-10T09:30:00.000Z", "amount": 179, "paymentMode": "UPI", "transactionRef": "pay_RH0000000001", "status": "SUCCESS", "gatewayOrderId": "order_RH000000001"}
+]

@@ -1,0 +1,17 @@
+{
+  "source": "TMDB (https://www.themoviedb.org)",
+  "attribution": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+  "importedAt": "2026-10-17T18:07:30.857Z",
+  "counts": {
+    "genres": 18,
+    "movies": 300,
+    "series": 200,
+    "seasons": 730,
+    "episodes": 12905,
+    "people": 2916
+  },
+  "options": {
+    "maxSeasons": 5,
+    "castLimit": 8
+  }
+}

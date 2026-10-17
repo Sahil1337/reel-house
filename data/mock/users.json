@@ -1,0 +1,20 @@
+[
+  {
+    "userId": 1,
+    "name": "Riya Sharma",
+    "email": "demo@reelhouse.dev",
+    "phone": "+91 98765 43210",
+    "role": "USER",
+    "createdAt": "2026-04-10T09:30:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 2,
+    "name": "Arjun Mehta",
+    "email": "admin@reelhouse.dev",
+    "phone": null,
+    "role": "ADMIN",
+    "createdAt": "2026-04-01T08:00:00.000Z",
+    "passwordHash": "scrypt$70237e47aad6c21c5512c87f4957260c$20f1cf7794a8a2dbfe126b6530ff77d3e33e95960b35ee86fc7d3978112a9ceef082dbdbfd2f4766e88f076ea74e518e289023b7ad49b91070f7ce25201af08a"
+  }
+]

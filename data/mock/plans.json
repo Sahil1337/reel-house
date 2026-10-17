@@ -1,0 +1,5 @@
+[
+  { "planId": 1, "name": "Matinee", "priceMonthly": 179, "videoQuality": "HD 720p", "maxDevices": 1 },
+  { "planId": 2, "name": "Feature", "priceMonthly": 399, "videoQuality": "Full HD 1080p", "maxDevices": 2 },
+  { "planId": 3, "name": "Premiere", "priceMonthly": 599, "videoQuality": "4K Ultra HD + HDR", "maxDevices": 4 }
+]

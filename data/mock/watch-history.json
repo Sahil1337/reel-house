@@ -1,0 +1,17 @@
+[
+  { "historyId": 15, "profileId": 1, "contentType": "SERIES", "tmdbId": 1396, "seasonNumber": 1, "episodeNumber": 3, "watchedAt": "2026-10-18T08:40:00.000Z", "progressPercent": 41 },
+  { "historyId": 14, "profileId": 1, "contentType": "MOVIE", "tmdbId": 438631, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-10-17T21:10:00.000Z", "progressPercent": 62 },
+  { "historyId": 13, "profileId": 2, "contentType": "SERIES", "tmdbId": 94605, "seasonNumber": 1, "episodeNumber": 4, "watchedAt": "2026-10-16T16:20:00.000Z", "progressPercent": 55 },
+  { "historyId": 12, "profileId": 1, "contentType": "SERIES", "tmdbId": 1396, "seasonNumber": 1, "episodeNumber": 2, "watchedAt": "2026-10-15T20:00:00.000Z", "progressPercent": 100 },
+  { "historyId": 11, "profileId": 2, "contentType": "SERIES", "tmdbId": 94605, "seasonNumber": 1, "episodeNumber": 3, "watchedAt": "2026-10-15T15:30:00.000Z", "progressPercent": 100 },
+  { "historyId": 10, "profileId": 1, "contentType": "SERIES", "tmdbId": 1396, "seasonNumber": 1, "episodeNumber": 1, "watchedAt": "2026-10-14T19:15:00.000Z", "progressPercent": 100 },
+  { "historyId": 9, "profileId": 1, "contentType": "MOVIE", "tmdbId": 157336, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-10-12T18:45:00.000Z", "progressPercent": 100 },
+  { "historyId": 8, "profileId": 2, "contentType": "MOVIE", "tmdbId": 155, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-10-11T14:00:00.000Z", "progressPercent": 100 },
+  { "historyId": 7, "profileId": 1, "contentType": "MOVIE", "tmdbId": 496243, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-10-09T22:05:00.000Z", "progressPercent": 6 },
+  { "historyId": 6, "profileId": 2, "contentType": "MOVIE", "tmdbId": 11, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-10-08T17:40:00.000Z", "progressPercent": 34 },
+  { "historyId": 5, "profileId": 1, "contentType": "MOVIE", "tmdbId": 27205, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-10-06T20:30:00.000Z", "progressPercent": 100 },
+  { "historyId": 4, "profileId": 1, "contentType": "SERIES", "tmdbId": 66732, "seasonNumber": 1, "episodeNumber": 2, "watchedAt": "2026-10-04T21:00:00.000Z", "progressPercent": 23 },
+  { "historyId": 3, "profileId": 1, "contentType": "SERIES", "tmdbId": 66732, "seasonNumber": 1, "episodeNumber": 1, "watchedAt": "2026-10-03T20:10:00.000Z", "progressPercent": 100 },
+  { "historyId": 2, "profileId": 1, "contentType": "MOVIE", "tmdbId": 210577, "seasonNumber": null, "episodeNumber": null, "watchedAt": "2026-09-28T21:20:00.000Z", "progressPercent": 96 },
+  { "historyId": 1, "profileId": 1, "contentType": "SERIES", "tmdbId": 2316, "seasonNumber": 2, "episodeNumber": 1, "watchedAt": "2026-09-18T19:00:00.000Z", "progressPercent": 100 }
+]

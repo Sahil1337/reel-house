@@ -1,0 +1,29 @@
+[
+  {
+    "profileId": 1,
+    "userId": 1,
+    "name": "Riya",
+    "avatar": "lamp",
+    "maturityLevel": "ADULT",
+    "onboardingCompleted": true,
+    "genrePreferences": ["Science Fiction", "Drama", "Thriller"]
+  },
+  {
+    "profileId": 2,
+    "userId": 1,
+    "name": "Kabir",
+    "avatar": "reel",
+    "maturityLevel": "TEEN",
+    "onboardingCompleted": true,
+    "genrePreferences": ["Action", "Adventure", "Animation"]
+  },
+  {
+    "profileId": 3,
+    "userId": 1,
+    "name": "Mini",
+    "avatar": "popcorn",
+    "maturityLevel": "KIDS",
+    "onboardingCompleted": false,
+    "genrePreferences": []
+  }
+]

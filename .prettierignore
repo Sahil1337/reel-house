@@ -1,0 +1,12 @@
+.next
+out
+build
+coverage
+node_modules
+drizzle
+data
+.cache
+package-lock.json
+next-env.d.ts
+*.tsbuildinfo
+docs/schema/schema-diagram.svg
