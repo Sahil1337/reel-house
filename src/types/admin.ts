@@ -194,7 +194,6 @@ export interface ContentDeletionImpact {
     watch_history: number;
     my_list: number;
     rating: number;
-    recommendation: number;
   };
 }
 

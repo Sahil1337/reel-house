@@ -6,10 +6,9 @@
  * rows are inserted, their new ids read back with RETURNING, and snapshot/mock
  * keys are mapped to those ids in memory.
  *
- * WARNING: this RESETS the database. All 17 tables are TRUNCATEd with
+ * WARNING: this RESETS the database. All 16 tables are TRUNCATEd with
  * RESTART IDENTITY CASCADE first. Use on dev databases only. Everything runs
  * in a single transaction, so a failure leaves the database unchanged.
- * No recommendation rows are created (the pipeline generates those later).
  *
  * Run (needs DATABASE_URL in .env):  npm run db:seed
  */
@@ -30,7 +29,6 @@ try {
 }
 
 const TABLES = [
-  "recommendation",
   "rating",
   "my_list",
   "watch_history",
@@ -50,7 +48,7 @@ const TABLES = [
 ];
 
 async function resetTables(tx: Tx) {
-  console.log("Resetting database: TRUNCATE ... RESTART IDENTITY CASCADE on all 17 tables");
+  console.log("Resetting database: TRUNCATE ... RESTART IDENTITY CASCADE on all 16 tables");
   await tx.execute(sql.raw(`TRUNCATE ${TABLES.join(", ")} RESTART IDENTITY CASCADE`));
 }
 
@@ -75,7 +73,6 @@ async function main() {
       const profileById = await seedProfiles(tx, data, userById, genreByTmdb, genreByName);
       await seedBilling(tx, data, userById);
       await seedActivity(tx, data, { profileById, contentByKey, episodeByKey });
-      console.log("  recommendation             0 (generated later by the pipeline)");
     });
     console.log("Notes:");
     for (const n of notes) console.log(`  - ${n}`);

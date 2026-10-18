@@ -2,8 +2,8 @@
  * Catalogue reads: search and browse, one title's full detail, the genre list and "More like this".
  *
  * Tables it reads: content, genre, content_genre, person, content_credit, season, episode — plus
- * watch_history (recent viewers, the tie-break for similar titles). Writes nothing; the catalogue is
- * written only by admin.service.importTitle.
+ * watch_history (popularity for search ranking). Writes nothing; the catalogue is written only by
+ * admin.service.importTitle.
  *
  * Maturity is never stored: every catalogue query that filters by profile uses the SQL function
  * maturity_of(c.age_rating) (docs/schema/SCHEMA.md), whose enum order is KIDS < TEEN < ADULT and which maps a
@@ -348,21 +348,17 @@ export async function searchContent(query: ContentSearch): Promise<ContentSummar
 
 /**
  * "More like this": up to `limit` titles that share the most genres with this one. Never the title itself.
- * Ties break on 7-day distinct watch_history viewers, then release_date DESC.
+ * Ties break on release_date DESC (newest first).
  *
  * SQL:
  *   SELECT c.content_id, COUNT(*) AS shared_genres
  *     FROM content_genre AS a
  *     JOIN content_genre AS b ON b.genre_id = a.genre_id AND b.content_id <> a.content_id
  *     JOIN content AS c ON c.content_id = b.content_id
- *     LEFT JOIN (SELECT content_id, COUNT(DISTINCT profile_id) AS viewers
- *                  FROM watch_history
- *                 WHERE watched_at > now() - interval '7 days'
- *                 GROUP BY content_id) AS p ON p.content_id = c.content_id
  *    WHERE a.content_id = $1
  *      AND ($2::maturity_level IS NULL OR maturity_of(c.age_rating) <= $2)
- *    GROUP BY c.content_id, c.release_date, p.viewers
- *    ORDER BY shared_genres DESC, COALESCE(p.viewers, 0) DESC, c.release_date DESC NULLS LAST
+ *    GROUP BY c.content_id, c.release_date
+ *    ORDER BY shared_genres DESC, c.release_date DESC NULLS LAST
  *    LIMIT $3;
  */
 export async function getSimilarTitles(
@@ -382,16 +378,10 @@ export async function getSimilarTitles(
     FROM content_genre AS a
     JOIN content_genre AS b ON b.genre_id = a.genre_id AND b.content_id <> a.content_id
     JOIN content AS c ON c.content_id = b.content_id
-    LEFT JOIN (
-      SELECT content_id, COUNT(DISTINCT profile_id) AS viewers
-      FROM watch_history
-      WHERE watched_at > now() - interval '7 days'
-      GROUP BY content_id
-    ) AS p ON p.content_id = c.content_id
     WHERE a.content_id = ${contentId}
       AND (${maturityLevel ? sql`maturity_of(c.age_rating) <= ${maturityLevel}::maturity_level` : sql`true`})
-    GROUP BY c.content_id, c.release_date, p.viewers
-    ORDER BY shared_genres DESC, COALESCE(p.viewers, 0) DESC, c.release_date DESC NULLS LAST
+    GROUP BY c.content_id, c.release_date
+    ORDER BY shared_genres DESC, c.release_date DESC NULLS LAST
     LIMIT ${limit};
   `);
 

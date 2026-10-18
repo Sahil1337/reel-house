@@ -4,7 +4,7 @@
  *
  * Request:  path contentId
  * Response: 200 ContentDeletionImpact { contentId, title, contentType, counts: { content_genre, content_credit,
- *             season, episode, watch_history, my_list, rating, recommendation } } rows removed by the ON DELETE
+ *             season, episode, watch_history, my_list, rating } } rows removed by the ON DELETE
  *             CASCADE chain; a preview, rows added before the delete are removed too
  *           401 / 403 not an admin · 404 { error } no such title
  *

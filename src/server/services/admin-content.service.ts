@@ -4,7 +4,7 @@
  * list, update and delete the rows it created.
  *
  * Tables it reads: content, content_genre, genre, season, episode, content_credit, watch_history, my_list,
- * rating, recommendation. It writes content (UPDATE, DELETE); a DELETE cascades to the child tables.
+ * rating. It writes content (UPDATE, DELETE); a DELETE cascades to the child tables.
  *
  * Exports:
  *   listContentForAdmin(filters)          GET    /api/admin/content
@@ -54,7 +54,6 @@ type RawImpactRow = {
   watch_history: number;
   my_list: number;
   rating: number;
-  recommendation: number;
 };
 
 function mapToAdminRow(row: RawAdminContentRow): AdminContentRow {
@@ -154,8 +153,7 @@ export async function getContentDeletionImpact(contentId: number): Promise<Conte
       WHERE s.content_id = c.content_id)                                     AS episode,
     (SELECT COUNT(*) FROM watch_history   WHERE content_id = c.content_id) AS watch_history,
     (SELECT COUNT(*) FROM my_list         WHERE content_id = c.content_id) AS my_list,
-    (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating,
-    (SELECT COUNT(*) FROM recommendation  WHERE content_id = c.content_id) AS recommendation
+    (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating
   FROM content AS c
   WHERE c.content_id = $1;`;
 
@@ -177,7 +175,6 @@ export async function getContentDeletionImpact(contentId: number): Promise<Conte
       watch_history: Number(row.watch_history ?? 0),
       my_list: Number(row.my_list ?? 0),
       rating: Number(row.rating ?? 0),
-      recommendation: Number(row.recommendation ?? 0),
     },
   };
 }

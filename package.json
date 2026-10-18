@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/server/db/seed/index.ts",
+    "db:clear-activity": "tsx src/server/db/seed/clear-activity.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

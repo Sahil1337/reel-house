@@ -3,7 +3,6 @@ import { check, date, index, integer, pgTable, primaryKey, smallint, text, uniqu
 import { contentType, creditRole } from "./enums";
 import { profileGenrePreference } from "./accounts";
 import { myList, rating, watchHistory } from "./activity";
-import { recommendation } from "./recommendations";
 
 export const genre = pgTable("genre", {
   genreId: integer().primaryKey().generatedAlwaysAsIdentity(),
@@ -128,7 +127,6 @@ export const contentRelations = relations(content, ({ many }) => ({
   watchHistory: many(watchHistory),
   myListEntries: many(myList),
   ratings: many(rating),
-  recommendations: many(recommendation),
 }));
 
 export const contentGenreRelations = relations(contentGenre, ({ one }) => ({

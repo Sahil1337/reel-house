@@ -169,7 +169,7 @@ export async function updateProfile(
 }
 
 /**
- * Removes a profile and all of its activity (watch_history, my_list, rating, profile_genre_preference, recommendation)
+ * Removes a profile and all of its activity (watch_history, my_list, rating, profile_genre_preference)
  * through ON DELETE CASCADE. Refuses when it is the user's only profile.
  *
  * SQL:

@@ -4,7 +4,6 @@ import { maturityLevel, userRole } from "./enums";
 import { genre } from "./catalog";
 import { subscription } from "./billing";
 import { myList, rating, watchHistory } from "./activity";
-import { recommendation } from "./recommendations";
 
 export const users = pgTable(
   "users",
@@ -59,7 +58,6 @@ export const profileRelations = relations(profile, ({ one, many }) => ({
   watchHistory: many(watchHistory),
   myList: many(myList),
   ratings: many(rating),
-  recommendations: many(recommendation),
 }));
 
 export const profileGenrePreferenceRelations = relations(profileGenrePreference, ({ one }) => ({

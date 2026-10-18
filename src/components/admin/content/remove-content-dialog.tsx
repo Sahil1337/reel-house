@@ -86,7 +86,7 @@ function RemoveBody({ row, onClose }: { row: AdminContentRow; onClose: () => voi
             </>,
             <>
               The cascade follows <code className="font-mono">ON DELETE CASCADE</code> on content_genre, content_credit,
-              season (episodes go with their season), watch_history, my_list, rating and recommendation.
+              season (episodes go with their season), watch_history, my_list and rating.
             </>,
             <>
               Person and genre rows are shared, so they stay. People credited only on this title remain in the database

@@ -88,8 +88,8 @@ The catalogue is created **only** by `importTitle`. `updateContent` and `deleteC
 
 ### Tables you read and write
 
-- **Read**: `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode`, `watch_history` (popularity, trending). For the dashboard: `users`, `subscription`, `subscription_plan`, `payment`. For onboarding: `genre`. For the admin content table and delete preview: `watch_history`, `my_list`, `rating`, `recommendation` (counts only).
-- **Write**: `users`, `profile`, `profile_genre_preference` (accounts); `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode` (import); and `content` again (`updateContent` runs an UPDATE; `deleteContent` runs a DELETE, which cascades, meaning it automatically removes the dependent rows, to `content_genre`, `content_credit`, `season`, `episode`, `watch_history`, `my_list`, `rating`, `recommendation`).
+- **Read**: `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode`, `watch_history` (search popularity). For the dashboard: `users`, `subscription`, `subscription_plan`, `payment`. For onboarding: `genre`. For the admin content table and delete preview: `watch_history`, `my_list`, `rating` (counts only).
+- **Write**: `users`, `profile`, `profile_genre_preference` (accounts); `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode` (import); and `content` again (`updateContent` runs an UPDATE; `deleteContent` runs a DELETE, which cascades, meaning it automatically removes the dependent rows, to `content_genre`, `content_credit`, `season`, `episode`, `watch_history`, `my_list`, `rating`).
 
 ### Maturity rule
 
@@ -106,14 +106,14 @@ This section lists what you need from Yash (B) and Sahil (C), and what to do unt
 - **`genre` rows for `saveGenrePreferences`**
   - From: seeded (your own `listGenres` is only the read API).
   - Until it lands: query `genre` directly; no stub needed.
-- **Profile deletion cascades to `watch_history`, `my_list`, `rating`, `recommendation`**
+- **Profile deletion cascades to `watch_history`, `my_list`, `rating`**
   - From: Sahil's (C) tables already exist.
   - Until it lands: the FKs are `ON DELETE CASCADE`; nothing to stub.
 - **Recommendations after onboarding**
   - From: Sahil (C). Home is computed on every request from `profile_genre_preference` and the activity tables, so there is nothing to refresh.
   - Until it lands: nothing for you to do; you only save the picks and stamp `onboarded_at`.
 - **`getSimilarTitles`**
-  - It depends on no one: it is a self-join of `content_genre` plus recent `watch_history` for tie-breaks, so it works on the seeded data from day one.
+  - It depends on no one: it is a self-join of `content_genre` and `content` (ties break on release date), so it works on the seeded data from day one.
 - **Activity rows for the popularity ranking and dashboard**
   - From: Sahil (C) writes them later; the seed provides 15 history rows.
   - Until it lands: real data from the seed is enough.
@@ -146,7 +146,7 @@ Work top to bottom. Accounts come first: everyone depends on `users` + `profiles
 - [ ] **8. `listGenres`** (simplest catalogue query). curl `/api/genres`.
 - [ ] **9. `getContentDetail`**: six small queries, assemble `ContentDetail`. curl a movie, a series, and `/api/content/999999` (404).
 - [ ] **10. `searchContent`**: filters, ranking, genres json. curl each filter; Mini's profile (KIDS) must not see R-rated titles.
-- [ ] **11. `getSimilarTitles`**: shared-genre query with the recent-viewers tie-break. curl `/api/content/1/similar` as KIDS and ADULT.
+- [ ] **11. `getSimilarTitles`**: shared-genre query with the release-date tie-break. curl `/api/content/1/similar` as KIDS and ADULT.
 - [ ] **12. `markInCatalog` and `findCatalogueId`** (natural-key lookups). Test through the admin import page search and preview.
 - [ ] **13. `getDashboard`**: run the nine `QUERIES`, map rows. Open `/admin`.
 - [ ] **14. `importTitle`** + wire the route to fetch the title server-side (section 9.4). Import a new title twice: first 201 `created: true`, then 200 `created: false`; check row counts in Studio; force an error and confirm nothing was written.
@@ -429,7 +429,7 @@ RETURNING profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NO
 
 1. Confirm the profile belongs to `userId` -> `NotFoundError`.
 2. Refuse when it is the user's only profile -> `ConflictError`.
-3. `DELETE` the row. The `watch_history`, `my_list`, `rating`, `profile_genre_preference` and `recommendation` rows go with it through `ON DELETE CASCADE`.
+3. `DELETE` the row. The `watch_history`, `my_list`, `rating` and `profile_genre_preference` rows go with it through `ON DELETE CASCADE`.
 
 **SQL:**
 
@@ -441,7 +441,7 @@ DELETE FROM profile WHERE profile_id = $1 AND user_id = $2;
 
 **Rules to respect:**
 
-- Table: `profile`, which cascades to `watch_history`, `my_list`, `rating`, `profile_genre_preference`, `recommendation` (`ON DELETE CASCADE` on every `profile_id` foreign key).
+- Table: `profile`, which cascades to `watch_history`, `my_list`, `rating`, `profile_genre_preference` (`ON DELETE CASCADE` on every `profile_id` foreign key).
 - Transaction: yes (count + delete, so two concurrent deletes cannot both pass the check). Idempotent: no (a second delete is a 404).
 - Deleting the profile the user is currently watching as is the route's cookie concern.
 
@@ -483,7 +483,7 @@ SELECT genre_id FROM profile_genre_preference WHERE profile_id = $1 ORDER BY gen
 
 **What it does:** Saves the cold-start genre picks (the first taste signals for a new profile) and finishes onboarding by setting `onboarded_at`. It replaces earlier picks.
 
-Cold-start effect: in the home feed each picked genre adds +2 to that genre's taste. With no other activity yet, Home is the picked genres' titles, ties broken by trending (Sahil's (C) engine, which reads these rows).
+Cold-start effect: in the home feed each picked genre adds +1 to that genre's taste. With no other activity yet, Home is the picked genres' titles, ties broken by release date, newest first (Sahil's (C) engine, which reads these rows). This is why onboarding requires at least 3 picks (`ONBOARDING_MIN_GENRES`): a new profile always reaches Home with a genre taste.
 
 **Steps:**
 
@@ -807,14 +807,14 @@ export async function getSimilarTitles(
 ): Promise<ContentSummary[]>;
 ```
 
-**What it does:** "More like this": returns up to `limit` titles that share the most genres with the given title. Ties break by recent popularity (distinct viewers in the last 7 days), then newest `release_date`. Titles above the profile's maturity level are filtered out, and the title itself is never returned. It reads only `content_genre`, `content` and `watch_history` (no views).
+**What it does:** "More like this": returns up to `limit` titles that share the most genres with the given title. Ties break on newest `release_date`. Titles above the profile's maturity level are filtered out, and the title itself is never returned. It reads only `content_genre` and `content` (no views, no activity tables).
 
 **Steps:**
 
 1. `getContentDetail(contentId)` -> `NotFoundError` for an unknown id (so the route answers 404). A cheaper `SELECT 1 FROM content WHERE content_id = $1` with the same error message is acceptable.
 2. Self-join `content_genre`: `a` is the given title's genres, `b` is every other title that has one of them. `COUNT(*)` per other title is `shared_genres`.
-3. Left join the 7-day viewers per title for the tie-break, and filter on `maturity_of(age_rating) <= $maturityLevel` (null = no filter).
-4. `ORDER BY shared_genres DESC, COALESCE(viewers, 0) DESC, release_date DESC NULLS LAST` `LIMIT $limit` (12 on the title page).
+3. Filter on `maturity_of(age_rating) <= $maturityLevel` (null = no filter).
+4. `ORDER BY shared_genres DESC, release_date DESC NULLS LAST` `LIMIT $limit` (12 on the title page).
 5. Hydrate the ids into `ContentSummary` with their genres, as in `searchContent`, and keep the order from step 4.
 
 **SQL:**
@@ -824,12 +824,10 @@ SELECT c.content_id, COUNT(*) AS shared_genres
   FROM content_genre AS a
   JOIN content_genre AS b ON b.genre_id = a.genre_id AND b.content_id <> a.content_id
   JOIN content AS c ON c.content_id = b.content_id
-  LEFT JOIN (SELECT content_id, COUNT(DISTINCT profile_id) AS viewers FROM watch_history
-              WHERE watched_at > now() - interval '7 days' GROUP BY content_id) AS p ON p.content_id = c.content_id
  WHERE a.content_id = $1
    AND ($2::maturity_level IS NULL OR maturity_of(c.age_rating) <= $2)
- GROUP BY c.content_id, c.release_date, p.viewers
- ORDER BY shared_genres DESC, COALESCE(p.viewers, 0) DESC, c.release_date DESC NULLS LAST
+ GROUP BY c.content_id, c.release_date
+ ORDER BY shared_genres DESC, c.release_date DESC NULLS LAST
  LIMIT $3;
 ```
 
@@ -837,8 +835,8 @@ Then load the `ContentSummary` for those ids (one query with `WHERE c.content_id
 
 **Rules to respect:**
 
-- Tables: `content_genre`, `content`, `watch_history` (tie-break only), `genre` (hydration).
-- Relies on: `content_genre` PK; `maturity_of()`. No views and no refresh step.
+- Tables: `content_genre`, `content`, `genre` (hydration).
+- Relies on: `content_genre` PK; `maturity_of()`. It reads the base tables directly (not the `genre_taste` view), so there is no refresh step.
 - No transaction. Idempotent: yes (read).
 - A title with no genres returns an empty list.
 - Fewer than `limit` titles may qualify (small genres, or a strict maturity level).
@@ -1055,18 +1053,17 @@ SELECT
     WHERE s.content_id = c.content_id)                                    AS episode,
   (SELECT COUNT(*) FROM watch_history  WHERE content_id = c.content_id) AS watch_history,
   (SELECT COUNT(*) FROM my_list        WHERE content_id = c.content_id) AS my_list,
-  (SELECT COUNT(*) FROM rating         WHERE content_id = c.content_id) AS rating,
-  (SELECT COUNT(*) FROM recommendation WHERE content_id = c.content_id) AS recommendation
+  (SELECT COUNT(*) FROM rating         WHERE content_id = c.content_id) AS rating
 FROM content AS c
 WHERE c.content_id = $1;
 ```
 
 **Rules to respect:**
 
-- Tables: `content` and the eight child tables. Every FK to `content` is `ON DELETE CASCADE` (`episode` through `season`).
+- Tables: `content` and the seven child tables. Every FK to `content` is `ON DELETE CASCADE` (`episode` through `season`).
 - `watch_history` carries both `content_id` and `episode_id`, so an episode's history is counted once, by `content_id`.
-- Indexes (custom migration): `watch_history`, `my_list` and `recommendation` are keyed by `profile_id` first, so lookups by `content_id` scan. Add:
-  `CREATE INDEX watch_history_content_idx ON watch_history (content_id); CREATE INDEX my_list_content_idx ON my_list (content_id); CREATE INDEX recommendation_content_idx ON recommendation (content_id);`
+- Indexes (custom migration): `watch_history` and `my_list` are keyed by `profile_id` first, so lookups by `content_id` scan. Add:
+  `CREATE INDEX watch_history_content_idx ON watch_history (content_id); CREATE INDEX my_list_content_idx ON my_list (content_id);`
   They also make the cascading DELETE itself fast (Postgres finds child rows through the FK column).
 - `content_genre`, `content_credit`, `season` and `rating` (`rating_content_idx`) are already covered.
 - No transaction. Idempotent: yes (read-only).
@@ -1077,7 +1074,7 @@ WHERE c.content_id = $1;
 
 - `NotFoundError("Title not found.")` -> 404.
 
-**Mock today:** Counts the mock title's genres, cast plus directors, seasons and episodes, and the `watchHistory` / `myList` / `ratings` rows with its id. `recommendation` has no mock rows and returns the fixed pseudo-count `(contentId * 7) % 5`.
+**Mock today:** Counts the mock title's genres, cast plus directors, seasons and episodes, and the `watchHistory` / `myList` / `ratings` rows with its id.
 
 **Used by:** `GET /api/admin/content/:contentId/impact`.
 
@@ -1100,7 +1097,7 @@ DELETE FROM content WHERE content_id = $1;
 
 **Rules to respect:**
 
-- Tables: `content`, and by `ON DELETE CASCADE` from `content_genre`, `content_credit`, `season` (and `episode` through `season_id`), `watch_history` (by `content_id` and by `episode_id`), `my_list`, `rating`, `recommendation`.
+- Tables: `content`, and by `ON DELETE CASCADE` from `content_genre`, `content_credit`, `season` (and `episode` through `season_id`), `watch_history` (by `content_id` and by `episode_id`), `my_list`, `rating`.
 - **Not deleted**: `person` rows (someone credited only on this title stays as an orphan) and `genre` rows (shared lookups; a genre may end up with no titles).
 - No explicit transaction (one statement). Idempotent: no, but safe to repeat: the second call finds nothing and answers 404.
 - Every profile loses that title's history, list entry and rating.
@@ -1465,5 +1462,5 @@ You are finished when every box below is ticked.
   - `/admin` dashboard (all "View SQL" panels), `/admin/import` end to end.
   - `/admin/content`: search, filters, pagination, remove dialog with live cascade counts and the SQL, edit dialog. The optimistic row removal now persists after a refetch, so drop `refetchType: "none"` in `src/hooks/queries/admin-content.ts`.
 - [ ] The guards are real (section 6.1) and Yash and Sahil were told; hardening items 1 and 2 done; 3 and 4 decided (documented in README section 9).
-- [ ] `npm run lint` and `npm run build` pass; route comments updated (sign-up session, `POST /api/admin/content/import` header); the `watch_history`, `my_list` and `recommendation` `content_id` indexes from 8.6 are in a custom migration.
+- [ ] `npm run lint` and `npm run build` pass; route comments updated (sign-up session, `POST /api/admin/content/import` header); the `watch_history` and `my_list` `content_id` indexes from 8.6 are in a custom migration.
 - [ ] PR(s) reviewed by Yash or Sahil with their curl evidence.
