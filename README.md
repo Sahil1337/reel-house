@@ -1,297 +1,265 @@
 # Reelhouse
 
-A Netflix-style streaming app built for a DBMS course project: browse films and series,
-keep a list, rate titles, resume where you left off, manage profiles and a subscription,
-and get a home page whose every row explains why it's there.
+A Netflix-style streaming app built for a DBMS course project. You can browse films and series, keep a
+list, rate titles, resume where you left off, manage profiles and a subscription, and get a Home page
+that explains why each row is there.
 
-This repository is the **frontend plus a stubbed backend**. Sign-in, sign-out and sessions are
-real; the rest of the backend (database, business logic) is intentionally not written yet:
-the route handlers in `src/app/api` are thin and final, and the services behind them in
-`src/server/services` return correctly-shaped mock data while documenting, in their JSDoc,
-exactly what the real implementation must do. Video playback is simulated.
+**What's real today**
+
+| Part                                                              | Status                                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------- |
+| Sign-in, sign-out, sessions                                       | Real (mock user file, signed cookie)                     |
+| Viewing activity: progress, History, My List, ratings, title page | Real, on PostgreSQL (Neon)                               |
+| Home recommendations                                              | Real, on PostgreSQL, with a "Why these picks?" explainer |
+| Billing and payments (Razorpay)                                   | Real, needs Razorpay test keys                           |
+| Users, profiles, catalogue, admin                                 | Mock services: correct shapes, nothing saved yet         |
+| Video playback                                                    | Simulated                                                |
 
 ## Run it
 
 ```bash
 npm install
-cp .env.example .env      # set SESSION_SECRET (optional in dev: a built-in dev secret is used, with a warning)
+cp .env.example .env      # fill in the values below
+npm run db:migrate        # only for a new or reset database
+npm run db:seed           # load the demo data (resets every table)
 npm run dev               # http://localhost:3000
 ```
 
-Sign in with **demo@reelhouse.dev / demo1234** (the account of Riya Sharma). Sign-up is still a
-mock ("Demo mode"): it validates the form, then sends you to sign in with the demo account. Sign-up
-creates only the account; plans are bought from the account page through Razorpay (see
-[Payments](#payments-razorpay)).
-The demo account has three profiles:
+`.env` needs `DATABASE_URL` (Neon), `SESSION_SECRET` (optional in dev, a built-in one is used with a
+warning), `TMDB_API_KEY` (admin import and `import:tmdb`) and the three `RAZORPAY_*` keys (payments).
 
-| Profile | Maturity | State                                               |
-| ------- | -------- | --------------------------------------------------- |
-| Riya    | Adult    | history, My List, ratings, onboarding done          |
-| Kabir   | Teen     | a little history, onboarding done                   |
-| Mini    | Kids     | onboarding not done yet — opens the onboarding flow |
+**Demo login:** `demo@reelhouse.dev` / `demo1234` (Riya Sharma's account, with three profiles):
 
-**Admin:** sign in with **admin@reelhouse.dev / admin1234** (role `ADMIN`, no profiles) and you land on
-`/admin`. Admins who also have profiles get an "Admin" entry in the profile menu. See
-[Admin panel](#admin-panel).
+| Profile | Maturity | State                                                    |
+| ------- | -------- | -------------------------------------------------------- |
+| Riya    | Adult    | history, My List, ratings, onboarding done               |
+| Kabir   | Teen     | a little history, onboarding done                        |
+| Mini    | Kids     | onboarding not done yet, so it opens the onboarding flow |
+
+**Admin login:** `admin@reelhouse.dev` / `admin1234` (role `ADMIN`, no profiles) lands on `/admin`.
+Admins who also have profiles get an "Admin" entry in the profile menu.
+
+Sign-up is still a mock ("Demo mode"): it checks the form, then sends you to sign in with the demo
+account. It only creates an account; plans are bought later from the account page.
 
 ## Scripts
 
-| Script                        | What it does                                                                                            |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                 | Start the dev server (Turbopack)                                                                        |
-| `npm run build` / `npm start` | Production build / serve it                                                                             |
-| `npm run lint`                | ESLint (flat config, `eslint-config-next`)                                                              |
-| `npm run import:tmdb`         | Re-download the catalogue into `data/tmdb/` (needs `TMDB_API_KEY`, see `.env.example`; ~5,000 requests) |
+| Script                            | What it does                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------- |
+| `npm run dev`                     | Dev server (Turbopack)                                                                   |
+| `npm run build` / `npm start`     | Production build / serve it                                                              |
+| `npm run lint`                    | ESLint                                                                                   |
+| `npm run format` / `format:check` | Prettier                                                                                 |
+| `npm run db:migrate`              | Apply the SQL migrations in `drizzle/`                                                   |
+| `npm run db:generate`             | Create a migration from schema changes                                                   |
+| `npm run db:seed`                 | Reset every table and load the demo data from `data/`                                    |
+| `npm run db:clear-activity`       | Empty watch history, My List and ratings only (test from a clean start)                  |
+| `npm run db:studio`               | Browse the database in Drizzle Studio                                                    |
+| `npm run import:tmdb`             | Re-download the catalogue into `data/tmdb/` (needs `TMDB_API_KEY`, about 5,000 requests) |
+
+If the dev server shows an error for code that is clearly fixed (for example after a big merge), stop it,
+run `rm -rf .next/dev` and start it again; Turbopack's dev cache can hold an old copy of a file.
 
 ## How data flows
 
 ```
 page (server component) ──► src/lib/api/server.ts ──┐
 client component ─────────► src/lib/api/client.ts ──┴──► src/app/api/**/route.ts
-                                                         (thin: guard → parse → service → HTTP)
+                                                         guard → parse → service → HTTP
                                                                       │
                                                                       ▼
                                                   src/server/services/*.service.ts
-                                          (JSDoc = the implementation spec; mock bodies today)
                                                                       │
-                                                                      ▼
-                                       src/server/mocks/ ──► data/        (later: Drizzle ──► Neon PostgreSQL)
-                                        (temporary JSON loader)
+                                     ┌────────────────────────────────┴───────────────┐
+                                     ▼                                                ▼
+                     Drizzle ──► PostgreSQL on Neon                 src/server/mocks/ ──► data/
+                     (real services)                                (services not built yet)
 ```
 
-- **Every page gets its data through the API routes.** Server components call
-  `serverApi.*` (`src/lib/api/server.ts`), which fetches the same routes with the incoming
-  request's host and cookies; the browser-side `api.*` (`src/lib/api/client.ts`) is the only place
-  that calls `fetch('/api/...')`. Pages and components never read `data/` or `src/server/mocks/` directly.
-- **Client components use TanStack Query.** Hooks in `src/hooks/queries/` (`catalog`, `activity`,
-  `profiles`, `billing`, `auth`, `admin`) wrap `api.*` as `useQuery` / `useMutation`, so components
-  never call `api` themselves. Optimistic mutations (My List, ratings, history removal) roll back in
-  `onError`, invalidate their keys on success and call `router.refresh()` so server-rendered data stays
-  in sync. The `QueryClient` is created once per browser session in
-  `src/components/providers/query-provider.tsx` (mounted in the root layout), and every query key
-  comes from the typed factory in `src/lib/api/query-keys.ts`.
-- **Routes are thin.** Each handler does the same four things: a guard, `parseBody` / `parseId`,
-  one service call, and an HTTP response. Services throw typed errors (`src/server/errors`:
-  `NotFoundError`, `ConflictError`, `ValidationError`, …); `handleError` in `src/app/api/_lib/http.ts`
-  turns them into the status and JSON body, so no route builds an error response by hand.
-  `src/app/api/_lib/http.ts` also holds `parseBody` (JSON + zod, 400/422) and `parseId`.
-- **Sign-in** (`POST /api/auth/sign-in`) checks the email and password against
-  `data/mock/users.json` (scrypt hashes, `src/server/auth/password.ts`) and sets an httpOnly
-  `session` cookie, `<userId>.<HMAC-SHA256 signature>` keyed by `SESSION_SECRET`
-  (`src/server/auth/session-token.ts`, cookie helpers in `src/server/auth/session.ts`).
-  `POST /api/auth/sign-out` clears it and the profile cookie; `GET /api/auth/me` returns the
-  signed-in user.
-- **Guards, in three layers:** `src/proxy.ts` sends signed-out visitors of app pages to
-  `/sign-in?next=…` (and signed-in visitors of `/sign-in`/`/sign-up` to `/profiles`); server
-  pages call `requireUser()` / `requireProfile()` (`src/server/session/current-session.ts`), which go
-  through `GET /api/auth/me`; and the account/profile API routes use the guards in
-  `src/app/api/_lib/auth.ts`, which throw typed errors (401 without a session, 404 for profiles that
-  aren't the user's) and look the user and profile up through the `users` and `profiles` services.
-- **Admins** are users with `role = 'ADMIN'`. `/admin/**` pages go through the proxy (session) and
-  then `requireAdmin()` in the admin layout, which sends signed-in non-admins to `/profiles`; every
-  `/api/admin/**` route calls `requireAdmin()` from `src/app/api/_lib/auth.ts` (401 signed out, 403 not
-  an admin). After sign-in without a `next` page, admins land on `/admin`.
-- **The current profile** is the `profileId` cookie (`src/lib/cookies/profile-cookie.ts`), set in the
-  browser by the "Who's watching?" picker. It's honoured only if that profile belongs to the
-  signed-in user; otherwise pages redirect to `/profiles`.
-- **Mutations** (My List, ratings, playback progress, history removal, profiles, onboarding)
-  call the real endpoints and update the UI optimistically with a toast. The mock services persist
-  nothing, so a reload shows the mock data again. Plan purchases go through Razorpay Checkout
-  (see [Payments](#payments-razorpay)).
+- **Pages only get data through the API routes.** Server components use `serverApi.*`; the browser uses
+  `api.*`, the only code that calls `fetch('/api/...')`. Nothing outside the services reads `data/` or
+  the mocks.
+- **Client components use TanStack Query.** Hooks live in `src/hooks/queries/`, and every query key comes
+  from `src/lib/api/query-keys.ts`. My List, ratings and history removal update the screen right away and
+  roll back if the request fails.
+- **Routes are thin.** Each one does a guard, `parseBody` / `parseId`, one service call and a response.
+  Services throw typed errors (`NotFoundError`, `ConflictError`, `ValidationError`, …), and `handleError`
+  turns them into the status code and JSON.
+- **Sign-in** checks `data/mock/users.json` (scrypt hashes) and sets an httpOnly `session` cookie,
+  `<userId>.<HMAC-SHA256 signature>`, signed with `SESSION_SECRET`. Sign-out clears it;
+  `GET /api/auth/me` returns the signed-in user. To change a mock password, make a hash with the
+  one-liner in `src/server/auth/password.ts` and paste it into `users.json`.
+- **Guards work in three layers:**
+  1. `src/proxy.ts` sends signed-out visitors to `/sign-in?next=…` (and signed-in visitors of the sign-in
+     pages to `/profiles`).
+  2. Server pages call `requireUser()` / `requireProfile()`.
+  3. API routes use the guards in `src/app/api/_lib/auth.ts`: 401 without a session, 404 for a profile that
+     isn't yours.
+- **Admins** are users with `role = 'ADMIN'`. Admin pages check `requireAdmin()` (non-admins go to
+  `/profiles`), and every `/api/admin/**` route answers 401 when signed out and 403 for non-admins.
+- **The current profile** is the `profileId` cookie set by the "Who's watching?" picker. It only counts if
+  the profile belongs to the signed-in user.
 
-### The API-stub convention
+### How the backend is organised
 
-The full implementation guide (who builds what, the shared Drizzle/Neon setup, per-person task
-lists) is in [`docs/backend/README.md`](docs/backend/README.md).
+The full implementation guide (who builds what, Drizzle and Neon setup, per-person task lists) is in
+[`docs/backend/README.md`](docs/backend/README.md).
 
-The backend is split into a **contract** (the routes) and a **spec** (the services):
+1. **Routes are the HTTP contract.** The comment at the top of each `src/app/api` file gives the endpoint,
+   request, response and status codes, plus a `Calls:` line naming the guard and services. Routes don't
+   change when a service becomes real.
+2. **Services are the spec.** `src/server/services` has one `<domain>.service.ts` per area: `users`,
+   `profiles`, `catalog`, `activity`, `recommendations`, `billing`, `payments`, `admin`, `admin-content`,
+   `admin-billing`. A function that isn't built yet documents its steps, SQL, tables, edge cases and errors
+   in its comment, and returns mock data with a `// TODO: implement`.
+3. **Mocks are temporary.** Only services may import `@/server/mocks`. When a service is real, replace its
+   bodies (same signatures and errors); when all of them are, delete `src/server/mocks/`. The auth route
+   comments list what to harden later (bcrypt/argon2, rate limiting, a session table).
 
-1. **Routes keep only the HTTP contract.** The header comment of each file in `src/app/api` gives the
-   endpoint, the request and response shapes and the status codes, plus a one-line **`Calls:`** list
-   naming the guard and services it uses, in order. Nothing else lives there, so a route never changes
-   when the backend becomes real.
-2. **The "functions to write" spec lives in the service JSDoc.** `src/server/services` has one
-   `<domain>.service.ts` per concern: `users`, `profiles`, `catalog`, `activity`, `recommendations`,
-   `billing`, `payments`, `admin` (plus `admin-content` and `admin-billing` for the admin content, plan and subscription tools). Every exported function documents its steps, SQL, the tables and
-   keys it relies on, transaction and idempotency notes, edge cases (unique keys, upserts, cascades,
-   the 90% "completed" rule, maturity filtering, …), what it throws, who calls it, and what the mock
-   does today. `recommendations.service.ts` documents the whole home-feed pipeline: interaction
-   signals and their weights → candidate generation (genre/people affinity, item-item kNN, a
-   popularity prior from our own watch history) → the 0.5 / 0.3 / 0.2 ranking blend with maturity and
-   "already finished" filters → the home rows and their `reason` strings.
-3. **The bodies are mocks.** Each function returns data of the right shape through
-   `src/server/mocks/` (a lookup by id at most) and carries a `// TODO: implement`. Search ignores
-   the query, the home feed is fixed slices of the catalogue, and writes return a plausible success.
+## Recommendations
 
-`@/server/mocks` may only be imported from `src/server/services`. When a service is real, replace its
-bodies (keeping the signatures and thrown errors); when every service is real, **delete
-`src/server/mocks/`**. The routes and the frontend need no changes. The auth routes' comments list what
-to harden later (bcrypt/argon2, rate limiting, a session table instead of the stateless cookie).
+Home has a hero, **Continue watching**, **Top picks** and one row each for the profile's two favourite
+genres. Everything is computed on each visit; nothing is stored.
 
-To add or change a mock user's password, generate a hash with the one-liner in
-`src/server/auth/password.ts` and paste it into `data/mock/users.json`.
+1. **Genre taste.** The `genre_taste` view turns what a profile did into points per genre: watched
+   (0 to 1 by progress), rated ((stars − 3) / 2), on My List (+0.5), and +1 for each genre picked during
+   onboarding.
+2. **Score.** Every title the profile hasn't watched, rated or saved, and that suits its maturity level,
+   scores `SUM(taste of its genres) ÷ √(number of genres)`. Ties go to the newest title.
+3. **Rows.** The best scores fill Top picks (the first one is the hero); the genre rows use the same score
+   within one genre. No title appears twice.
+
+New profiles must pick at least three genres, so they get personal picks straight away. The
+**Why these picks?** button on Home shows the whole calculation for the current profile. The code is in
+`src/server/services/recommendations.service.ts`; the build guide is
+[`plans/activity-recommendations/plan.md`](plans/activity-recommendations/plan.md).
 
 ## Admin panel
 
-`/admin` (sidebar shell from the component kit) has five pages. Every write shows the PostgreSQL it
-runs, and the services behind them are mocks, so writes update the screen optimistically and say so in
-their toast ("Demo data — not saved until the backend is implemented"):
+`/admin` has five pages. Every write shows the PostgreSQL it runs. The admin services are still mocks,
+so writes update the screen and say "Demo data — not saved until the backend is implemented".
 
-- **Dashboard**: stat tiles (users, active subscriptions, titles, episodes, revenue this month), recent
-  payments, most-watched titles, genre distribution and subscriptions by plan. Every widget has a
-  **SQL** button that opens the exact PostgreSQL query it's meant to run, with a one-line explanation
-  and its result rows. One route, `GET /api/admin/dashboard`, returns `{ widgets: { [key]: { data,
-sql, explanation } } }`; the SQL strings live in `src/server/services/admin.service.ts` because they're what your backend will run.
-  Today the data is counted from the mock rows.
-- **Import from TMDB**: search TMDB as you type (movies or series), pick a result and preview exactly
-  what an import stores: the content row, genres, cast and directors with photos, seasons and episodes,
-  and the row count per table. Below the preview is the SQL the import runs, statement by statement
-  (BEGIN, the upserts in dependency order, COMMIT), each with a short explanation and the values filled in,
-  with copy buttons for each statement and for the whole transaction. "Import" calls
-  `POST /api/admin/content/import`, whose service persists nothing yet.
-- **Content** (`/admin/content`): every title with poster, type, year, age rating, genres and the
-  season / episode counts for series; search, type and genre filters and server-side pagination
-  (`GET /api/admin/content`). **Remove** opens a confirmation that lists what the delete cascades to
-  (`GET /api/admin/content/:id/impact`: genre links, credits, seasons, episodes, watch history, My List,
-  ratings and recommendations) and the `DELETE FROM content WHERE content_id = $1` that does it
-  (`DELETE /api/admin/content/:id`, 204). **Edit details** changes title, description, release date, age
-  rating and artwork (`PATCH /api/admin/content/:id`; 409 when the title, type and release date clash).
-- **Plans** (`/admin/plans`): plans with price, video quality, device limit and subscriber count. Add and
-  edit dialogs (`POST /api/admin/plans`, `PATCH /api/admin/plans/:id`) validate with zod and show the
-  `INSERT … RETURNING` / `UPDATE … WHERE plan_id` as you type; a price change never rewrites past
-  `payment.amount`. Delete (`DELETE /api/admin/plans/:id`) is refused with 409 while any subscription
-  references the plan (`ON DELETE RESTRICT`).
-- **Subscriptions** (`/admin/subscriptions`): all subscriptions joined with user and plan, filtered by
-  status and user email (`GET /api/admin/subscriptions?status=&q=&page=`). Row actions **Cancel**
-  (ACTIVE → CANCELLED, `end_date = now()`), **Extend** (add months to `end_date`) and **Change plan**
-  (an admin override: no payment is recorded, the new price applies from the next renewal) go through
-  `PATCH /api/admin/subscriptions/:id`, each with its SQL and the constraints it respects (one ACTIVE per
-  user, the dates CHECK).
-
-Unlike the mock services, the two TMDB routes (`GET /api/admin/tmdb/search`, `GET /api/admin/tmdb/:type/:tmdbId`)
-make **real** TMDB calls with `TMDB_API_KEY` from `.env`. They use the same client and mappers as the import
-script (`src/lib/tmdb/`), so a title previewed in the admin has the same shape as one in `data/tmdb/`.
-The SQL text comes from `src/lib/sql/import-title.ts` (pure string building, no database).
+- **Dashboard:** tiles (users, active subscriptions, titles, episodes, revenue this month), recent
+  payments, most-watched titles, genre mix and subscriptions per plan. Each widget has a **SQL** button
+  showing its query, a one-line explanation and the rows. All of it comes from `GET /api/admin/dashboard`.
+- **Import from TMDB:** search TMDB as you type, pick a title and preview everything an import would store
+  (content, genres, cast and directors, seasons and episodes, row counts per table), followed by the import
+  transaction statement by statement with copy buttons. The search and preview make **real** TMDB calls
+  with `TMDB_API_KEY`; saving (`POST /api/admin/content/import`) is a mock.
+- **Content:** every title with search, type and genre filters and paging. **Remove** first lists what the
+  delete takes with it (genre links, credits, seasons, episodes, watch history, My List, ratings) and shows
+  the `DELETE`. **Edit details** changes title, description, release date, age rating and artwork (409 if
+  it clashes with another title).
+- **Plans:** price, video quality, device limit and subscriber count, with add and edit dialogs. A price
+  change never rewrites past payments. Deleting a plan someone uses is refused (409).
+- **Subscriptions:** every subscription with its user and plan, filtered by status and email. **Cancel**,
+  **Extend** and **Change plan** each show their SQL and the rules they respect (one active subscription
+  per user, valid dates).
 
 ## Payments (Razorpay)
 
-Plans are bought on `/account`: pick a plan → `POST /api/account/subscriptions` (Razorpay order) →
-Razorpay Checkout (card, UPI, net banking, wallets) → its success handler posts to
-`POST /api/payments/verify` → the page polls `GET /api/account` for the new plan. Razorpay also
-reports every attempt to `POST /api/payments/webhook`. The full design is "Payment flow" in
-[`docs/schema/SCHEMA.md`](docs/schema/SCHEMA.md).
+Plans are bought on `/account`:
 
-**All three routes are backed by mock services** like the rest of the API: `src/server/services/payments.service.ts`
-documents the functions to write (`createRazorpayOrder`, `verifyPaymentSignature`, `verifyWebhookSignature`,
-`parseWebhookEvent`, `recordFailedPayment`, `recordCapturedPayment`, …). Only the frontend is built (the browser
-side is `src/lib/razorpay/checkout.ts` + `src/components/account/change-plan.tsx`): while the checkout
-stub returns `keyId: null`, the account page skips Razorpay Checkout and goes straight to the
-"payment received" state; once the route returns a real order and key id, Checkout opens.
+1. Picking a plan calls `POST /api/account/subscriptions`, which creates a Razorpay order.
+2. Razorpay Checkout opens (card, UPI, net banking, wallets).
+3. On success it posts to `POST /api/payments/verify`, and the page polls `GET /api/account` for the new
+   plan.
 
-When you implement them: use Razorpay **Test Mode** keys (Dashboard → Account & Settings → API Keys)
-in `.env`, pay with Razorpay's [test cards](https://razorpay.com/docs/payments/payments/test-card-details/)
-or [test UPI ids](https://razorpay.com/docs/payments/payments/test-upi-details/), and for webhooks
-locally use a tunnel ([Razorpay suggests zrok](https://razorpay.com/docs/webhooks/validate-test/)) with
-the events `payment.captured` and `payment.failed`. Never put live keys in `.env`.
+Razorpay also reports every attempt to `POST /api/payments/webhook`. The full design is "Payment flow" in
+[`docs/schema/SCHEMA.md`](docs/schema/SCHEMA.md); the code is `src/server/services/payments.service.ts`
+(server) and `src/lib/razorpay/checkout.ts` with `src/components/account/change-plan.tsx` (browser).
 
-## SQL naming
+Use Razorpay **Test Mode** keys in `.env` (Dashboard → Account & Settings → API Keys), pay with the
+[test cards](https://razorpay.com/docs/payments/payments/test-card-details/) or
+[test UPI ids](https://razorpay.com/docs/payments/payments/test-upi-details/), and test webhooks locally
+through a tunnel ([Razorpay suggests zrok](https://razorpay.com/docs/webhooks/validate-test/)) with the
+events `payment.captured` and `payment.failed`. Never put live keys in `.env`.
+
+## Database
 
 The full design (tables, constraints, ER diagram, normalisation notes) is in
-[`docs/schema/SCHEMA.md`](docs/schema/SCHEMA.md). The service JSDoc, the dashboard queries and the generated
-import SQL all use its names, so keep them in step if the schema changes:
+[`docs/schema/SCHEMA.md`](docs/schema/SCHEMA.md). The migrations in `drizzle/` are
+`0000_schema.sql` (tables and the `maturity_of()` function), `0001_genre_taste_view.sql` and
+`0002_drop_recommendation.sql`.
 
-- **PostgreSQL**, singular snake_case tables, except `users` (`user` is reserved): `users`,
-  `profile`, `subscription_plan`, `subscription`, `payment`, `content`, `genre`,
-  `content_genre`, `season`, `episode`, `person`, `content_credit` (cast and directors, told
-  apart by `role`), `watch_history`, `my_list`, `rating`, `profile_genre_preference`,
-  `recommendation`.
+- **16 tables**, singular snake_case except `users` (`user` is reserved): `users`, `profile`,
+  `profile_genre_preference`, `subscription_plan`, `subscription`, `payment`, `content`, `genre`,
+  `content_genre`, `season`, `episode`, `person`, `content_credit` (cast and directors, told apart by
+  `role`), `watch_history`, `my_list`, `rating`. Plus one view, `genre_taste`.
 - **Columns** are the snake_case of the field names in `src/types` (`contentId` → `content_id`).
-  Maturity isn't stored: queries derive it with `maturity_of(content.age_rating)`, a SQL function
-  over the certificate code.
-- **Natural keys** the import upserts on: `content (title, content_type, release_date)` and
+- **Maturity isn't stored.** Queries work it out with `maturity_of(content.age_rating)`.
+- **Natural keys** used for upserts: `content (title, content_type, release_date)` and
   `person (name, date_of_birth)` (both `UNIQUE NULLS NOT DISTINCT`), `genre (name)`,
-  `season (content_id, season_number)`, `episode (season_id, episode_number)`. The database stores
-  no TMDB ids; they only live in `data/tmdb/` and the admin's TMDB routes.
-- **Enums** (`content_type`, `maturity_level`, `credit_role`, `user_role`, statuses, payment
-  modes) use upper-case strings, the same as `src/types` where the API exposes them.
+  `season (content_id, season_number)`, `episode (season_id, episode_number)`. No TMDB ids are stored;
+  they only exist in `data/tmdb/` and the admin's TMDB routes.
+- **Enums** (`content_type`, `maturity_level`, `credit_role`, `user_role`, statuses, payment modes) are
+  upper-case strings, as in `src/types`.
 
 ## The `data/` folder
 
 ```
 data/
-  tmdb/     real TMDB snapshot written by scripts/import-tmdb.mts — don't edit by hand
-            genres.json (18) · people.json (~2.9k) · movies.json (300) · series.json (200,
-            up to 5 seasons each, with episodes) · meta.json (counts, import time, attribution)
-  mock/     hand-written account and activity rows, named after the planned tables:
-            users · profiles · plans · subscriptions · payments · watch-history · my-list · ratings
+  tmdb/   real TMDB snapshot written by scripts/import-tmdb.mts (don't edit by hand):
+          genres.json (18) · people.json (~2.9k) · movies.json (300) ·
+          series.json (200, up to 5 seasons each, with episodes) · meta.json (counts, attribution)
+  mock/   hand-written demo accounts and activity:
+          users · profiles · plans · subscriptions · payments · watch-history · my-list · ratings
 ```
 
-Field names mirror the planned database columns in camelCase, matching `src/types`. Mock rows
-reference titles by their snapshot entry `{ "contentType": "MOVIE" | "SERIES", "tmdbId": … }` and
-episodes by `seasonNumber` + `episodeNumber`. Those TMDB ids are matched to `data/tmdb` entries in
-memory and never stored: app ids (`contentId`, `episodeId`, `genreId`, …) are assigned when
-`src/server/mocks/db.ts` loads the files, the way identity columns are when seeding. The database seed
-(`src/server/db/seed/`, `npm run db:seed`) loads the same files into Neon, inserting each title by its natural key. Profile genre preferences are listed by genre name. Every reference is checked at
-load time, so a typo fails loudly. Image fields are full `https://image.tmdb.org/…` URLs,
-rendered through `next/image`.
+- Field names match `src/types` (camelCase). Mock rows point at titles as
+  `{ "contentType": "MOVIE" | "SERIES", "tmdbId": … }` and at episodes by season and episode number;
+  profile genre picks use the genre name.
+- App ids (`contentId`, `episodeId`, …) are assigned when the files load, the way identity columns are,
+  and every reference is checked so a typo fails loudly.
+- `npm run db:seed` loads the same files into Neon (titles by their natural key), and the mock services
+  read them directly. Images are full `https://image.tmdb.org/…` URLs shown through `next/image`.
 
 ## Folder structure
 
-One folder per concern. `src/lib` is **client-safe** (importable from anywhere); `src/server` is
-**server-only** (services, auth, errors, the mock loader). Nothing sits loose at the top of either.
+`src/lib` is **client-safe** (importable anywhere); `src/server` is **server-only**. One folder per concern,
+nothing loose at the top of either.
 
 ```
 data/                      tmdb/ snapshot + mock/ JSON (see above)
-drizzle/                   SQL migrations (being added)
-scripts/import-tmdb.mts    TMDB → data/tmdb importer (caches responses in .cache/, git-ignored); shares src/lib/tmdb
-docs/                      SCHEMA.md (database design), backend/ (implementation guide)
+drizzle/                   SQL migrations (0000 schema, 0001 genre_taste view, 0002 drop recommendation)
+scripts/import-tmdb.mts    TMDB → data/tmdb importer (caches responses in .cache/, git-ignored)
+plans/                     build guides (activity-recommendations/plan.md)
+docs/                      schema/ (SCHEMA.md, diagrams), backend/ (implementation guide)
 src/
   app/
     (marketing)/           landing page
-    (auth)/                sign-in, sign-up (account only)
+    (auth)/                sign-in, sign-up
     (app)/                 signed-in area (layout calls requireUser)
       profiles/            who's watching + manage profiles
       onboarding/          cold start: pick at least 3 genres
-      watch/[contentId]/   mock player (?episode=)
+      watch/[contentId]/   simulated player (?episode=)
       (shell)/             pages with the top nav: browse, browse/genre/[genreId], search,
                            title/[contentId], my-list, history, account
-    admin/                 admin panel (layout calls requireAdmin): dashboard, import, content, plans, subscriptions
+    admin/                 admin panel (layout calls requireAdmin)
     api/                   thin REST routes: guard → parse → service → HTTP
-      _lib/auth.ts         requireUser / requireOwnedProfile / requireAdmin guards (throw typed errors)
-      _lib/http.ts         handleError (typed error → response), parseBody, parseWith, parseId
-      _lib/tmdb.ts         TMDB client access for the admin TMDB routes
-      account/ admin/ auth/ content/ genres/ plans/ profiles/
-      payments/            verify (Checkout's success handler), webhook (Razorpay events)
+      _lib/                auth.ts (guards), http.ts (handleError, parseBody, parseId), tmdb.ts
+      account/ admin/ auth/ content/ genres/ plans/ profiles/ payments/
   components/
     ui/                    coss ui primitives (on Base UI)
-    admin/                 admin shell, dashboard widgets, import / content / plans / subscriptions, SQL code block
-    account/ auth/ browse/ content/ layout/ library/ marketing/
-    onboarding/ player/ profiles/ search/ title/
-    providers/             query-provider (TanStack QueryClientProvider)
-  hooks/                   use-media-query (sidebar), use-progress-sync (player)
-    queries/               TanStack Query hooks per domain (catalog, activity, profiles, billing, auth, admin)
+    browse/                Home rows, hero, the "Why these picks?" explainer (explainer/)
+    admin/ account/ auth/ content/ layout/ library/ marketing/ onboarding/ player/ profiles/ search/ title/
+    providers/             TanStack Query provider
+  hooks/                   use-media-query, use-progress-sync (player)
+    queries/               TanStack Query hooks: catalog, activity, recommendations, profiles, billing,
+                           auth, admin
   lib/                     CLIENT-SAFE
-    api/                   client.ts (browser `api.*`), server.ts (`serverApi.*`, server-only), query-keys.ts
-    constants/             app-wide constants (cookie names, avatars, thresholds)
-    content/               maturity rules, watch-progress helpers
-    cookies/               profile-cookie (browser side of the profileId cookie)
-    format/                date / duration / price formatting
-    razorpay/              checkout.ts: browser side, Checkout types and option helpers
-    sql/                   SQL text for display: import script, admin content / plan / subscription statements, literal inlining, highlighter
-    tmdb/                  TMDB client + TMDB → snapshot mappers (shared with the import script)
-    ui/                    segmented-control class helpers
-    utils/                 cn() and friends (what `@/lib/utils` resolves to)
-    validation/            zod form schemas: auth.ts (sign-in, sign-up), profile.ts, admin.ts (content, plans, subscriptions: forms and routes)
+    api/                   client.ts (browser `api.*`), server.ts (`serverApi.*`), query-keys.ts
+    constants/ content/ cookies/ format/ razorpay/ sql/ tmdb/ ui/ utils/
+    validation/            zod schemas: auth, profile, admin
   server/                  SERVER-ONLY
     auth/                  password hashing (scrypt), signed session token, session cookie
-    db/                    Drizzle: index.ts exports `db`, schema/ per area (being added)
-    errors/                typed errors (NotFoundError, ConflictError, …) mapped by api/_lib/http.ts
-    mocks/                 TEMPORARY: loads data/ for the services; only services import it; delete with the real backend
-    services/              one <domain>.service.ts each: users, profiles, catalog, activity,
-                           recommendations, billing, payments, admin
-    session/               current-session.ts: requireUser / requireProfile / requireAdmin for pages
-  types/                   domain types (mirror the planned schema)
-  proxy.ts                 route guard (no session → /sign-in?next=…); Next.js requires it at src/ root
+    db/                    Drizzle: index.ts (`db`), schema/, queries/ (shared reads), seed/
+    errors/                typed errors, turned into responses by api/_lib/http.ts
+    mocks/                 TEMPORARY loader of data/ for the services not built yet
+    services/              one <domain>.service.ts per area
+    session/               requireUser / requireProfile / requireAdmin for pages
+  types/                   domain types (mirror the schema)
+  proxy.ts                 route guard (no session → /sign-in?next=…); Next.js requires it at src/
 ```
 
 ---

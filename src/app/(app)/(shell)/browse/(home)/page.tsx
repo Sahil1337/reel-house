@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Search01Icon } from "@hugeicons/core-free-icons";
 
 import { Hero } from "@/components/browse/hero";
+import { HomeExplainer } from "@/components/browse/home-explainer";
 import { HomeRows } from "@/components/browse/home-rows";
 import { LinkButton } from "@/components/browse/link-button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -20,8 +21,11 @@ export default async function BrowsePage() {
   const heroActivity = hero ? await serverApi.getTitleActivity(profile.profileId, hero.content.contentId) : null;
 
   return (
-    <>
+    <div className="relative">
       <h1 className="sr-only">Home for {profile.name}</h1>
+      <div className="absolute top-20 right-4 z-20 sm:right-8 lg:right-12">
+        <HomeExplainer profileId={profile.profileId} />
+      </div>
       {hero ? (
         <Hero hero={hero} profileId={profile.profileId} inMyList={heroActivity?.inMyList ?? false} />
       ) : (
@@ -32,7 +36,7 @@ export default async function BrowsePage() {
           <HomeRows rows={rows} />
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
 

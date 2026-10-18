@@ -1,0 +1,381 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2260" height="1600" viewBox="0 0 2260 1600" font-family="Helvetica, Arial, sans-serif">
+<title>ER Diagram — Streaming Management System</title>
+<rect width="2260" height="1600" fill="#ffffff"/>
+<text x="50.0" y="70.0" font-size="30" font-weight="bold" fill="#0f1b33" text-anchor="start">Streaming Management System — ER Diagram</text>
+<line x1="240" y1="200" x2="75.0" y2="150.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="200" x2="75.0" y2="250.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="200" x2="440.0" y2="105.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="200" x2="470.0" y2="160.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="200" x2="480.0" y2="215.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="200" x2="480.0" y2="270.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="200" x2="440.0" y2="325.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="520" x2="95.0" y2="445.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="520" x2="95.0" y2="595.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="520" x2="340.0" y2="430.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="520" x2="370.0" y2="600.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="520" x2="68.0" y2="520.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="840" x2="75.0" y2="905.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="840" x2="160.0" y2="970.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="840" x2="275.0" y2="1005.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="840" x2="395.0" y2="960.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="240" y1="840" x2="420.0" y2="905.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="440.0" y2="440.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="480.0" y2="375.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="560.0" y2="330.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="680.0" y2="305.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="800.0" y2="330.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="870.0" y2="385.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="520" x2="890.0" y2="450.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="840" x2="455.0" y2="660.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="840" x2="455.0" y2="710.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="840" x2="455.0" y2="760.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="840" x2="455.0" y2="810.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="660" y1="840" x2="455.0" y2="860.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="840" x2="1080.0" y2="955.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="840" x2="940.0" y2="950.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="840" x2="1235.0" y2="950.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1200" y1="530" x2="1077.1" y2="458.3" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<line x1="1200" y1="530" x2="1152.8" y2="411.3" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<line x1="1200" y1="530" x2="1247.2" y2="411.3" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<line x1="1200" y1="530" x2="1322.9" y2="458.3" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<line x1="1500" y1="840" x2="1922.1" y2="912.6" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="2063.7" y2="999.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1874.8" y2="992.3" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1974.9" y2="1102.9" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1796.7" y2="1059.4" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1847.1" y2="1185.1" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1694.1" y2="1108.5" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1690.7" y2="1238.9" stroke="#1f3460" stroke-width="1"/>
+<line x1="1500" y1="840" x2="1575.5" y2="1135.4" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="1450" x2="985.0" y2="1530.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="1450" x2="1175.0" y2="1530.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="315" x2="1395.0" y2="290.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="315" x2="1395.0" y2="345.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="315" x2="1770.0" y2="290.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="315" x2="1770.0" y2="345.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="575" x2="1770.0" y2="535.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="575" x2="1785.0" y2="590.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1580" y1="575" x2="1770.0" y2="645.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="840" x2="2030.9" y2="734.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="840" x2="2112.3" y2="776.4" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="840" x2="2144.9" y2="835.8" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="840" x2="2119.8" y2="896.3" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="1743.8" y2="132.5" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="1828.0" y2="81.2" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="1942.5" y2="65.2" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="2053.3" y2="89.4" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="2127.4" y2="146.5" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="2142.7" y2="219.6" stroke="#1f3460" stroke-width="1"/>
+<line x1="1930" y1="200" x2="2094.7" y2="286.8" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="1080" x2="1080.0" y2="1165.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="1265" x2="985.0" y2="1350.0" stroke="#1f3460" stroke-width="1"/>
+<line x1="1080" y1="1265" x2="1175.0" y2="1350.0" stroke="#1f3460" stroke-width="1"/>
+<polyline points="240.0,220.0 240.0,360.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="240.0,220.0 240.0,360.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="240.0,500.0 240.0,360.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="340.0,520.0 450.0,520.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="340.0,520.0 450.0,520.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="560.0,520.0 450.0,520.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="240.0,540.0 240.0,680.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="240.0,540.0 240.0,680.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="240.0,820.0 240.0,680.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="660.0,540.0 660.0,680.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="660.0,820.0 660.0,680.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="660.0,820.0 660.0,680.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="760.0,840.0 870.0,840.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="980.0,840.0 870.0,840.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="980.0,840.0 870.0,840.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1180.0,840.0 1290.0,840.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="1180.0,840.0 1290.0,840.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1400.0,840.0 1290.0,840.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="720.0,860.0 720.0,860.0 720.0,1080.0 1080.0,1080.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1420.0,860.0 1420.0,860.0 1420.0,1080.0 1080.0,1080.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="660.0,860.0 660.0,860.0 660.0,1265.0 1080.0,1265.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1455.0,860.0 1455.0,860.0 1455.0,1265.0 1080.0,1265.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="600.0,860.0 600.0,860.0 600.0,1450.0 835.0,1450.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="980.0,1450.0 835.0,1450.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1490.0,860.0 1490.0,860.0 1490.0,1450.0 1325.0,1450.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1180.0,1450.0 1325.0,1450.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1140.0,820.0 1140.0,820.0 1140.0,690.0" fill="none" stroke="#1f3460" stroke-width="1.5" stroke-dasharray="7,4"/>
+<polyline points="1140.0,550.0 1140.0,550.0 1140.0,690.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter" stroke-dasharray="7,4"/>
+<polyline points="1140.0,550.0 1140.0,550.0 1140.0,690.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1300.0,530.0 1400.0,530.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter" stroke-dasharray="7,4"/>
+<polyline points="1300.0,530.0 1400.0,530.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1440.0,820.0 1440.0,820.0 1440.0,530.0 1400.0,530.0" fill="none" stroke="#1f3460" stroke-width="1.5" stroke-dasharray="7,4"/>
+<polyline points="1010.0,820.0 1010.0,820.0 1010.0,200.0 1500.0,200.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1830.0,200.0 1500.0,200.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1580.0,820.0 1580.0,820.0 1580.0,708.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1580.0,595.0 1580.0,708.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="1580.0,595.0 1580.0,708.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1580.0,335.0 1580.0,445.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1580.0,555.0 1580.0,445.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="1580.0,555.0 1580.0,445.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1600.0,840.0 1715.0,840.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1830.0,840.0 1715.0,840.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="1830.0,840.0 1715.0,840.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<polyline points="1930.0,820.0 1930.0,520.0" fill="none" stroke="#1f3460" stroke-width="1.5"/>
+<polyline points="1930.0,220.0 1930.0,520.0" fill="none" stroke="#1f3460" stroke-width="5.4" stroke-linejoin="miter"/>
+<polyline points="1930.0,220.0 1930.0,520.0" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="miter"/>
+<ellipse cx="75.0" cy="150.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="75.0" y="154.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">payment_id</text>
+<ellipse cx="75.0" cy="250.0" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="75.0" y="254.0" font-size="12" fill="#0f1b33" text-anchor="middle">payment_date</text>
+<ellipse cx="440.0" cy="105.0" rx="36.7" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="440.0" y="109.0" font-size="12" fill="#0f1b33" text-anchor="middle">amount</text>
+<ellipse cx="470.0" cy="160.0" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="470.0" y="164.0" font-size="12" fill="#0f1b33" text-anchor="middle">payment_mode</text>
+<ellipse cx="480.0" cy="215.0" rx="67.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="480.0" y="219.0" font-size="12" fill="#0f1b33" text-anchor="middle">transaction_ref</text>
+<ellipse cx="480.0" cy="270.0" rx="71.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="480.0" y="274.0" font-size="12" fill="#0f1b33" text-anchor="middle">gateway_order_id</text>
+<ellipse cx="440.0" cy="325.0" rx="36.7" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="440.0" y="329.0" font-size="12" fill="#0f1b33" text-anchor="middle">status</text>
+<ellipse cx="95.0" cy="445.0" rx="67.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="95.0" y="449.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">subscription_id</text>
+<ellipse cx="95.0" cy="595.0" rx="36.7" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="95.0" y="599.0" font-size="12" fill="#0f1b33" text-anchor="middle">status</text>
+<ellipse cx="340.0" cy="430.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="340.0" y="434.0" font-size="12" fill="#0f1b33" text-anchor="middle">start_date</text>
+<ellipse cx="370.0" cy="600.0" rx="43.6" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="370.0" y="604.0" font-size="12" fill="#0f1b33" text-anchor="middle">end_date</text>
+<ellipse cx="68.0" cy="520.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="68.0" y="524.0" font-size="12" fill="#0f1b33" text-anchor="middle">created_at</text>
+<ellipse cx="75.0" cy="905.0" rx="40.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="75.0" y="909.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">plan_id</text>
+<ellipse cx="160.0" cy="970.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="160.0" y="974.0" font-size="12" fill="#0f1b33" text-anchor="middle">name</text>
+<ellipse cx="275.0" cy="1005.0" rx="60.9" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="275.0" y="1009.0" font-size="12" fill="#0f1b33" text-anchor="middle">price_monthly</text>
+<ellipse cx="395.0" cy="960.0" rx="60.9" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="395.0" y="964.0" font-size="12" fill="#0f1b33" text-anchor="middle">video_quality</text>
+<ellipse cx="420.0" cy="905.0" rx="54.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="420.0" y="909.0" font-size="12" fill="#0f1b33" text-anchor="middle">max_devices</text>
+<ellipse cx="440.0" cy="440.0" rx="40.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="440.0" y="444.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">user_id</text>
+<ellipse cx="480.0" cy="375.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="480.0" y="379.0" font-size="12" fill="#0f1b33" text-anchor="middle">name</text>
+<ellipse cx="560.0" cy="330.0" rx="33.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="560.0" y="334.0" font-size="12" fill="#0f1b33" text-anchor="middle">email</text>
+<ellipse cx="680.0" cy="305.0" rx="60.9" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="680.0" y="309.0" font-size="12" fill="#0f1b33" text-anchor="middle">password_hash</text>
+<ellipse cx="800.0" cy="330.0" rx="33.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="800.0" y="334.0" font-size="12" fill="#0f1b33" text-anchor="middle">phone</text>
+<ellipse cx="870.0" cy="385.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="870.0" y="389.0" font-size="12" fill="#0f1b33" text-anchor="middle">role</text>
+<ellipse cx="890.0" cy="450.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="890.0" y="454.0" font-size="12" fill="#0f1b33" text-anchor="middle">created_at</text>
+<ellipse cx="455.0" cy="660.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="455.0" y="664.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">profile_id</text>
+<ellipse cx="455.0" cy="710.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="455.0" y="714.0" font-size="12" fill="#0f1b33" text-anchor="middle">name</text>
+<ellipse cx="455.0" cy="760.0" rx="36.7" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="455.0" y="764.0" font-size="12" fill="#0f1b33" text-anchor="middle">avatar</text>
+<ellipse cx="455.0" cy="810.0" rx="64.3" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="455.0" y="814.0" font-size="12" fill="#0f1b33" text-anchor="middle">maturity_level</text>
+<ellipse cx="455.0" cy="860.0" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="455.0" y="864.0" font-size="12" fill="#0f1b33" text-anchor="middle">onboarded_at</text>
+<ellipse cx="1080.0" cy="955.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1080.0" y="959.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">history_id</text>
+<ellipse cx="940.0" cy="950.0" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="940.0" y="954.0" font-size="12" fill="#0f1b33" text-anchor="middle">watched_at</text>
+<ellipse cx="1235.0" cy="950.0" rx="71.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1235.0" y="954.0" font-size="12" fill="#0f1b33" text-anchor="middle">progress_percent</text>
+<ellipse cx="1077.1" cy="458.3" rx="54.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="1077.1" y="462.3" font-size="12" fill="#0f1b33" text-anchor="middle">match_score</text>
+<ellipse cx="1152.8" cy="411.3" rx="36.7" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="1152.8" y="415.3" font-size="12" fill="#0f1b33" text-anchor="middle">reason</text>
+<ellipse cx="1247.2" cy="411.3" rx="43.6" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="1247.2" y="415.3" font-size="12" fill="#0f1b33" text-anchor="middle">row_kind</text>
+<ellipse cx="1322.9" cy="458.3" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="1322.9" y="462.3" font-size="12" fill="#0f1b33" text-anchor="middle">generated_at</text>
+<ellipse cx="1922.1" cy="912.6" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1922.1" y="916.6" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">content_id</text>
+<ellipse cx="2063.7" cy="999.0" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2063.7" y="1003.0" font-size="12" fill="#0f1b33" text-anchor="middle">content_type</text>
+<ellipse cx="1874.8" cy="992.3" rx="33.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1874.8" y="996.3" font-size="12" fill="#0f1b33" text-anchor="middle">title</text>
+<ellipse cx="1974.9" cy="1102.9" rx="54.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1974.9" y="1106.9" font-size="12" fill="#0f1b33" text-anchor="middle">description</text>
+<ellipse cx="1796.7" cy="1059.4" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1796.7" y="1063.4" font-size="12" fill="#0f1b33" text-anchor="middle">release_date</text>
+<ellipse cx="1847.1" cy="1185.1" rx="71.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1847.1" y="1189.1" font-size="12" fill="#0f1b33" text-anchor="middle">duration_minutes</text>
+<ellipse cx="1694.1" cy="1108.5" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1694.1" y="1112.5" font-size="12" fill="#0f1b33" text-anchor="middle">age_rating</text>
+<ellipse cx="1690.7" cy="1238.9" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1690.7" y="1242.9" font-size="12" fill="#0f1b33" text-anchor="middle">poster_url</text>
+<ellipse cx="1575.5" cy="1135.4" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1575.5" y="1139.4" font-size="12" fill="#0f1b33" text-anchor="middle">backdrop_url</text>
+<ellipse cx="985.0" cy="1530.0" rx="43.6" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="985.0" y="1534.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">genre_id</text>
+<ellipse cx="1175.0" cy="1530.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1175.0" y="1534.0" font-size="12" fill="#0f1b33" text-anchor="middle">name</text>
+<ellipse cx="1395.0" cy="290.0" rx="47.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1395.0" y="294.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">person_id</text>
+<ellipse cx="1395.0" cy="345.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1395.0" y="349.0" font-size="12" fill="#0f1b33" text-anchor="middle">name</text>
+<ellipse cx="1770.0" cy="290.0" rx="60.9" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1770.0" y="294.0" font-size="12" fill="#0f1b33" text-anchor="middle">date_of_birth</text>
+<ellipse cx="1770.0" cy="345.0" rx="47.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1770.0" y="349.0" font-size="12" fill="#0f1b33" text-anchor="middle">photo_url</text>
+<ellipse cx="1770.0" cy="535.0" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1770.0" y="539.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline dashed">role</text>
+<ellipse cx="1785.0" cy="590.0" rx="64.3" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1785.0" y="594.0" font-size="12" fill="#0f1b33" text-anchor="middle">character_name</text>
+<ellipse cx="1770.0" cy="645.0" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1770.0" y="649.0" font-size="12" fill="#0f1b33" text-anchor="middle">credit_order</text>
+<ellipse cx="2030.9" cy="734.0" rx="47.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2030.9" y="738.0" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">season_id</text>
+<ellipse cx="2112.3" cy="776.4" rx="60.9" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2112.3" y="780.4" font-size="12" fill="#0f1b33" text-anchor="middle">season_number</text>
+<ellipse cx="2144.9" cy="835.8" rx="29.8" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2144.9" y="839.8" font-size="12" fill="#0f1b33" text-anchor="middle">name</text>
+<ellipse cx="2119.8" cy="896.3" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2119.8" y="900.3" font-size="12" fill="#0f1b33" text-anchor="middle">release_date</text>
+<ellipse cx="1743.8" cy="132.5" rx="50.5" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1743.8" y="136.5" font-size="12" fill="#0f1b33" text-anchor="middle" style="text-decoration:underline">episode_id</text>
+<ellipse cx="1828.0" cy="81.2" rx="64.3" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1828.0" y="85.2" font-size="12" fill="#0f1b33" text-anchor="middle">episode_number</text>
+<ellipse cx="1942.5" cy="65.2" rx="33.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1942.5" y="69.2" font-size="12" fill="#0f1b33" text-anchor="middle">title</text>
+<ellipse cx="2053.3" cy="89.4" rx="54.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2053.3" y="93.4" font-size="12" fill="#0f1b33" text-anchor="middle">description</text>
+<ellipse cx="2127.4" cy="146.5" rx="57.4" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2127.4" y="150.5" font-size="12" fill="#0f1b33" text-anchor="middle">release_date</text>
+<ellipse cx="2142.7" cy="219.6" rx="71.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2142.7" y="223.6" font-size="12" fill="#0f1b33" text-anchor="middle">duration_minutes</text>
+<ellipse cx="2094.7" cy="286.8" rx="47.0" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="2094.7" y="290.8" font-size="12" fill="#0f1b33" text-anchor="middle">still_url</text>
+<ellipse cx="1080.0" cy="1165.0" rx="43.6" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1080.0" y="1169.0" font-size="12" fill="#0f1b33" text-anchor="middle">added_at</text>
+<ellipse cx="985.0" cy="1350.0" rx="33.2" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="985.0" y="1354.0" font-size="12" fill="#0f1b33" text-anchor="middle">value</text>
+<ellipse cx="1175.0" cy="1350.0" rx="43.6" ry="15" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="1175.0" y="1354.0" font-size="12" fill="#0f1b33" text-anchor="middle">rated_at</text>
+<polygon points="156.0,360 240,329.0 324.0,360 240,391.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="240.0" y="364.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">PAYS_FOR</text>
+<polygon points="366.0,520 450,489.0 534.0,520 450,551.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="450.0" y="524.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">PURCHASES</text>
+<polygon points="156.0,680 240,649.0 324.0,680 240,711.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="240.0" y="684.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">USES</text>
+<polygon points="576.0,680 660,649.0 744.0,680 660,711.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="660.0" y="684.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">CREATES</text>
+<polygon points="786.0,840 870,809.0 954.0,840 870,871.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="870.0" y="844.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">LOGS</text>
+<polygon points="1206.0,840 1290,809.0 1374.0,840 1290,871.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1290.0" y="844.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">RECORDS</text>
+<polygon points="996.0,1080 1080,1049.0 1164.0,1080 1080,1111.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1080.0" y="1084.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">MY_LIST</text>
+<polygon points="996.0,1265 1080,1234.0 1164.0,1265 1080,1296.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1080.0" y="1269.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">RATING</text>
+<polygon points="751.0,1450 835,1419.0 919.0,1450 835,1481.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="835.0" y="1454.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">PREFERS</text>
+<polygon points="1241.0,1450 1325,1419.0 1409.0,1450 1325,1481.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1325.0" y="1454.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">BELONGS_TO</text>
+<polygon points="1631.0,840 1715,809.0 1799.0,840 1715,871.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1715.0" y="844.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">COMPRISES</text>
+<polygon points="1846.0,520 1930,489.0 2014.0,520 1930,551.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1930.0" y="524.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">CONTAINS</text>
+<polygon points="1416.0,200 1500,169.0 1584.0,200 1500,231.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<text x="1500.0" y="204.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">OF_EPISODE</text>
+<polygon points="1056.0,690 1140,659.0 1224.0,690 1140,721.0" fill="#f4f6fb" stroke="#1f3460" stroke-width="1.6" stroke-dasharray="7,4"/>
+<polygon points="1064.0,690 1140,663.5 1216.0,690 1140,716.5" fill="none" stroke="#1f3460" stroke-width="1.2" stroke-dasharray="7,4"/>
+<text x="1140.0" y="694.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">GENERATED_FROM</text>
+<polygon points="1316.0,530 1400,499.0 1484.0,530 1400,561.0" fill="#f4f6fb" stroke="#1f3460" stroke-width="1.6" stroke-dasharray="7,4"/>
+<polygon points="1324.0,530 1400,503.5 1476.0,530 1400,556.5" fill="none" stroke="#1f3460" stroke-width="1.2" stroke-dasharray="7,4"/>
+<text x="1400.0" y="534.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">SUGGESTS</text>
+<polygon points="1496.0,708 1580,677.0 1664.0,708 1580,739.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<polygon points="1504.0,708 1580,681.5 1656.0,708 1580,734.5" fill="none" stroke="#1f3460" stroke-width="1.2"/>
+<text x="1580.0" y="712.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">HAS_CREDIT</text>
+<polygon points="1496.0,445 1580,414.0 1664.0,445 1580,476.0" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.6"/>
+<polygon points="1504.0,445 1580,418.5 1656.0,445 1580,471.5" fill="none" stroke="#1f3460" stroke-width="1.2"/>
+<text x="1580.0" y="449.0" font-size="11.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">CREDITED</text>
+<rect x="140.0" y="180.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="240.0" y="206.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">PAYMENT</text>
+<rect x="140.0" y="500.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="240.0" y="526.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">SUBSCRIPTION</text>
+<rect x="140.0" y="820.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="240.0" y="846.0" font-size="15.5" font-weight="bold" fill="#0f1b33" text-anchor="middle">SUBSCRIPTION_PLAN</text>
+<rect x="560.0" y="500.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="660.0" y="526.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">USER</text>
+<rect x="560.0" y="820.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="660.0" y="846.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">PROFILE</text>
+<rect x="980.0" y="820.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="1080.0" y="846.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">WATCH_HISTORY</text>
+<rect x="1100.0" y="510.0" width="200" height="40" rx="2" fill="#f4f6fb" stroke="#1f3460" stroke-width="1.8" stroke-dasharray="8,4"/>
+<rect x="1105.0" y="515.0" width="190" height="30" rx="1" fill="none" stroke="#1f3460" stroke-width="1.2" stroke-dasharray="8,4"/>
+<text x="1200.0" y="536.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">RECOMMENDATION</text>
+<rect x="1400.0" y="820.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="1500.0" y="846.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">CONTENT</text>
+<rect x="980.0" y="1430.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="1080.0" y="1456.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">GENRE</text>
+<rect x="1480.0" y="555.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<rect x="1485.0" y="560.0" width="190" height="30" rx="1" fill="none" stroke="#1f3460" stroke-width="1.2"/>
+<text x="1580.0" y="581.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">CREDIT</text>
+<rect x="1480.0" y="295.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="1580.0" y="321.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">PERSON</text>
+<rect x="1830.0" y="820.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="1930.0" y="846.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">SEASON</text>
+<rect x="1830.0" y="180.0" width="200" height="40" rx="2" fill="#ffffff" stroke="#1f3460" stroke-width="1.8"/>
+<text x="1930.0" y="206.0" font-size="16" font-weight="bold" fill="#0f1b33" text-anchor="middle">EPISODE</text>
+<text x="254.0" y="246.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="254.0" y="486.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="360.0" y="509.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="540.0" y="509.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="254.0" y="566.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="254.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="674.0" y="566.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="674.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="780.0" y="829.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="960.0" y="829.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1200.0" y="829.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1380.0" y="829.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="734.0" y="886.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">M</text>
+<text x="1434.0" y="886.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="674.0" y="886.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">M</text>
+<text x="1469.0" y="886.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="614.0" y="886.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">M</text>
+<text x="960.0" y="1439.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1504.0" y="886.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">M</text>
+<text x="1200.0" y="1439.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1154.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1154.0" y="576.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1320.0" y="519.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1454.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1024.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1810.0" y="189.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1594.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1594.0" y="621.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1594.0" y="361.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1594.0" y="541.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1620.0" y="829.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1810.0" y="829.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<text x="1944.0" y="806.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">1</text>
+<text x="1944.0" y="246.0" font-size="15" font-weight="bold" fill="#b5451b" text-anchor="middle" stroke="#ffffff" stroke-width="3" paint-order="stroke">N</text>
+<rect x="32" y="1114" width="500" height="430" rx="6" fill="#fafbfd" stroke="#d5dbe6"/>
+<text x="50.0" y="1142.0" font-size="15" font-weight="bold" fill="#0f1b33" text-anchor="start">Legend</text>
+<rect x="54" y="1161" width="52" height="22" fill="#fff" stroke="#1f3460" stroke-width="1.5"/>
+<text x="122.0" y="1176.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Entity</text>
+<rect x="54" y="1197" width="52" height="22" fill="#fff" stroke="#1f3460" stroke-width="1.5"/>
+<rect x="58" y="1201" width="44" height="14" fill="none" stroke="#1f3460" stroke-width="1"/>
+<text x="122.0" y="1212.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Weak entity (key comes from its owners)</text>
+<polygon points="52,1244 80,1231 108,1244 80,1257" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.4"/>
+<text x="122.0" y="1248.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Relationship</text>
+<polygon points="52,1280 80,1267 108,1280 80,1293" fill="#e6ecf7" stroke="#1f3460" stroke-width="1.4"/>
+<polygon points="59,1280 80,1271 101,1280 80,1289" fill="none" stroke="#1f3460" stroke-width="1"/>
+<text x="122.0" y="1284.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Identifying relationship (of a weak entity)</text>
+<ellipse cx="80" cy="1316" rx="26" ry="11" fill="#f6f1ea" stroke="#1f3460" stroke-width="1"/>
+<text x="122.0" y="1320.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Attribute  ·  underlined = key  ·  dashed underline = partial key</text>
+<line x1="54" y1="1352" x2="106" y2="1352" stroke="#1f3460" stroke-width="5.4"/>
+<line x1="54" y1="1352" x2="106" y2="1352" stroke="#fff" stroke-width="2.4"/>
+<text x="122.0" y="1356.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Total participation (every row takes part)</text>
+<line x1="54" y1="1388" x2="106" y2="1388" stroke="#1f3460" stroke-width="1.5"/>
+<text x="122.0" y="1392.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Partial participation</text>
+<text x="80.0" y="1429.0" font-size="14" font-weight="bold" fill="#b5451b" text-anchor="middle">1 : N</text>
+<text x="122.0" y="1428.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Cardinality (1, N, M)</text>
+<rect x="54" y="1449" width="52" height="22" fill="#f4f6fb" stroke="#1f3460" stroke-width="1.5" stroke-dasharray="6,3"/>
+<text x="122.0" y="1464.0" font-size="12.5" fill="#0f1b33" text-anchor="start">Derived, not stored (dashed)</text>
+<text x="50.0" y="1492.0" font-size="12" fill="#5b6478" text-anchor="start">RECOMMENDATION is computed per request from the genre_taste</text>
+<text x="50.0" y="1509.0" font-size="12" fill="#5b6478" text-anchor="start">view (watch history, ratings, My List, genre picks); it has no</text>
+<text x="50.0" y="1526.0" font-size="12" fill="#5b6478" text-anchor="start">table in the relational schema. Key = (history_id, content_id).</text>
+</svg>

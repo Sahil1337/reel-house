@@ -20,6 +20,7 @@ import type {
   ContentType,
   CreatePlanInput,
   Genre,
+  HomeExplanation,
   OnboardingInput,
   Profile,
   ProfileInput,
@@ -119,6 +120,9 @@ export const api = {
     request<{ entry: WatchHistory }>(profilePath(profileId, "/progress"), { method: "POST", body }),
   removeHistoryEntry: (profileId: number, historyId: number) =>
     request<void>(profilePath(profileId, `/history/${historyId}`), { method: "DELETE" }),
+
+  // Recommendations
+  getHomeExplanation: (profileId: number) => request<HomeExplanation>(profilePath(profileId, "/home/explain")),
 
   // Catalogue
   searchContent: (query: ContentQuery, init?: { signal?: AbortSignal }) =>

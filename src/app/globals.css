@@ -44,6 +44,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-signal-watch: var(--signal-watch);
+  --color-signal-rating: var(--signal-rating);
+  --color-signal-list: var(--signal-list);
+  --color-signal-pick: var(--signal-pick);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -211,6 +215,15 @@
   --chart-3: oklch(0.58 0.14 165.5);
   --chart-4: oklch(0.645 0.125 346.3);
   --chart-5: oklch(0.655 0.115 236.2);
+
+  /* "Why these picks?" signal sources, one colour each, used everywhere in the explainer.
+     Validated against --popover with the dataviz palette validator: adjacent pairs (stack
+     order watch → rating → list → pick) all pass; across all pairs rating↔pick sits in the
+     6–8 CVD band, so every chart also carries a legend, labels and the numbers table. */
+  --signal-watch: #3987e5;
+  --signal-rating: #c98500;
+  --signal-list: #d55181;
+  --signal-pick: #008300;
 
   /* Profile avatar tiles */
   --avatar-1: oklch(0.72 0.15 70);
@@ -386,6 +399,42 @@
   }
 }
 
+/* "Why these picks?": links draw left → right, bars grow, the score bar shrinks from the sum (÷ √n). */
+@keyframes flow-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes bar-shrink {
+  0% {
+    opacity: 0;
+    transform: scaleX(var(--from, 1));
+  }
+  25% {
+    opacity: 1;
+    transform: scaleX(var(--from, 1));
+  }
+}
+@utility animate-flow-draw {
+  animation: flow-draw 900ms cubic-bezier(0.77, 0, 0.175, 1) 120ms both;
+}
+@utility animate-bar-grow {
+  transform-origin: left;
+  animation: bar-grow 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@utility animate-bar-shrink {
+  transform-origin: left;
+  animation: bar-shrink 900ms cubic-bezier(0.77, 0, 0.175, 1) both;
+}
+
 /* Reduced motion: keep fades, drop movement. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -395,5 +444,11 @@
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
+  }
+  /* Explainer bars and links: no delayed reveal, just the final state. */
+  .animate-flow-draw,
+  .animate-bar-grow,
+  .animate-bar-shrink {
+    animation: none !important;
   }
 }
