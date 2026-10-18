@@ -113,4 +113,4 @@ WHERE
   AND NOT EXISTS (SELECT 1 FROM my_list       AS m WHERE m.profile_id = 1 AND m.content_id = c.content_id)
 GROUP BY c.content_id, c.title, c.release_date
 ORDER BY score DESC, c.release_date DESC NULLS LAST        -- ties: newest first
-LIMIT 18;
+LIMIT 6;

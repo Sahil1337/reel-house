@@ -12,17 +12,7 @@ import "server-only";
 
 import { alias } from "drizzle-orm/pg-core";
 import { and, between, desc, eq, exists, notExists, sql } from "drizzle-orm";
-import {
-  content,
-  contentGenre,
-  db,
-  genreTaste,
-  myList,
-  profile as profileTable,
-  profileGenrePreference,
-  rating,
-  watchHistory,
-} from "@/server/db";
+import { content, contentGenre, db, genreTaste, myList, rating, watchHistory } from "@/server/db";
 import { loadEpisodeData, loadContentData } from "@/server/db/queries/content";
 import type { GenreTaste, HomeFeed, HomeRow, MaturityLevel, Profile, RowItem, TopPick } from "@/types";
 
@@ -71,28 +61,21 @@ function unseenBy(profileId: number) {
   );
 }
 
-/** The genres this profile likes, strongest first. */
+/** The genres this profile likes, strongest first, with where each score came from. */
 export function getGenreTaste(profileId: number): Promise<GenreTaste[]> {
   return db
-    .select({ genreId: genreTaste.genreId, genre: genreTaste.genre, tasteScore: genreTaste.tasteScore })
+    .select({
+      genreId: genreTaste.genreId,
+      genre: genreTaste.genre,
+      watchScore: genreTaste.watchScore,
+      ratingScore: genreTaste.ratingScore,
+      myListScore: genreTaste.myListScore,
+      pickScore: genreTaste.pickScore,
+      tasteScore: genreTaste.tasteScore,
+    })
     .from(genreTaste)
     .where(eq(genreTaste.profileId, profileId))
     .orderBy(desc(genreTaste.tasteScore));
-}
-
-/** Does the profile have any activity, and any onboarding genre picks? Chooses the reason wording. */
-async function getSignalFlags(profileId: number): Promise<{ hasSignals: boolean; hasPicks: boolean }> {
-  const one = { one: sql`1` };
-  const [flags] = await db
-    .select({
-      hasSignals: sql<boolean>`${exists(db.select(one).from(watchHistory).where(eq(watchHistory.profileId, profileId)))}
-        OR ${exists(db.select(one).from(rating).where(eq(rating.profileId, profileId)))}
-        OR ${exists(db.select(one).from(myList).where(eq(myList.profileId, profileId)))}`,
-      hasPicks: sql<boolean>`${exists(db.select(one).from(profileGenrePreference).where(eq(profileGenrePreference.profileId, profileId)))}`,
-    })
-    .from(profileTable)
-    .where(eq(profileTable.profileId, profileId));
-  return flags ?? { hasSignals: false, hasPicks: false };
 }
 
 /** Titles this profile hasn't watched, rated or saved, best match first (optionally only one genre). */
@@ -157,9 +140,8 @@ async function getContinueWatching(profile: Profile) {
 export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
   const { profileId } = profile;
   // Independent queries run together; the genre rows need the taste result first.
-  const [taste, flags, picks, continueEntries] = await Promise.all([
+  const [taste, picks, continueEntries] = await Promise.all([
     getGenreTaste(profileId),
-    getSignalFlags(profileId),
     getTopPicks(profile),
     getContinueWatching(profile),
   ]);
@@ -178,7 +160,7 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
   });
 
   // One round of queries for all cards and all continue-watching episodes.
-  const [summaries, episodes] = await Promise.all([
+  const [titles, episodes] = await Promise.all([
     loadContentData([...continueEntries.map((entry) => entry.contentId), ...shown]),
     loadEpisodeData(continueEntries.flatMap((entry) => (entry.episodeId === null ? [] : [entry.episodeId]))),
   ]);
@@ -186,23 +168,22 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
   // Match %: the best pick is 99, others scale down towards 55; no chip when there is no taste at all.
   const best = picks[0]?.score ?? 0;
   const toItem = (pick: TopPick): RowItem[] => {
-    const summary = summaries.get(pick.contentId);
+    const summary = titles.get(pick.contentId);
     if (!summary) return [];
     return [{ content: summary, match: best > 0 ? Math.round(55 + 44 * Math.min(1, pick.score / best)) : undefined }];
   };
 
   const continueItems = continueEntries.flatMap((entry): RowItem[] => {
-    const summary = summaries.get(entry.contentId);
+    const summary = titles.get(entry.contentId);
     if (!summary) return [];
     const episode = entry.episodeId === null ? null : (episodes.get(entry.episodeId) ?? null);
     return [{ content: summary, progress: { progressPercent: entry.progressPercent, episode } }];
   });
 
-  const topReason = flags.hasSignals
-    ? REASONS.topPicks
-    : flags.hasPicks
-      ? REASONS.topPicksPickedGenres
-      : REASONS.topPicksNoSignals;
+  // Where the taste came from picks the wording: real activity, only the onboarding picks, or nothing yet.
+  const fromActivity = taste.some((genre) => genre.watchScore + genre.ratingScore + genre.myListScore > 0);
+  const topReason =
+    taste.length === 0 ? REASONS.topPicksNoSignals : fromActivity ? REASONS.topPicks : REASONS.topPicksPickedGenres;
   const rows: HomeRow[] = [
     {
       id: "continue-watching",
@@ -222,7 +203,7 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
       id: `genre-picks-${genre.genreId}`,
       kind: "genre-picks",
       title: `${genre.genre} for you`,
-      reason: flags.hasSignals ? REASONS.genreWatched(genre.genre) : REASONS.genrePicked(genre.genre),
+      reason: fromActivity ? REASONS.genreWatched(genre.genre) : REASONS.genrePicked(genre.genre),
       items: genreRows[index].flatMap(toItem),
     })),
   ];
@@ -234,7 +215,7 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
     hero: hero
       ? {
           content: hero.content,
-          reason: flags.hasSignals || flags.hasPicks ? REASONS.heroPick(profile.name) : REASONS.heroPopular,
+          reason: taste.length > 0 ? REASONS.heroPick(profile.name) : REASONS.heroPopular,
           match: hero.match,
         }
       : null,

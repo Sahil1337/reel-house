@@ -89,7 +89,7 @@ Work through these in order. Each step builds on the one before.
 - [ ] **3. History**: `listHistory`, `removeHistoryEntry`. History page; second delete -> 404.
 - [ ] **4. Progress**: `recordProgress` (validation, then one upsert). Player in the UI; movie and series; wrong episode -> 422; 95% twice -> one row.
 - [ ] **5. Title activity**: `getTitleActivity`, `getResumePoint`, `getNextEpisode`. Title page labels "Resume · 62%", "Resume S1:E3", "Play S1:E4"; finale completed -> null.
-- [ ] **6. Genre taste**: `getGenreTaste` + `getSignalFlags` (read the `genre_taste` view with `WHERE profile_id = $1`; the CTEs inside it read `watch_history`, `rating`, `my_list`, `profile_genre_preference`); compare with section 6.1.
+- [ ] **6. Genre taste**: `getGenreTaste` (read the `genre_taste` view with `WHERE profile_id = $1`; the CTEs inside it read `watch_history`, `rating`, `my_list`, `profile_genre_preference`); compare with section 6.1.
 - [ ] **7. Home queries**: `getTopPicks`, `getContinueWatching`, `getGenreTitles` (the top-picks query filtered to one genre), all as in the plan.
 - [ ] **8. `getHomeFeed`**: wire the rows together (dedupe, reasons, hero, match %), computed on every request.
 - [ ] **9. Check** the three demo profiles' Home pages, cold start (profile 3, a brand new profile).
@@ -595,7 +595,7 @@ The numbers below come from the plan, run against the seed with the `genre_taste
 - **Top picks, Kabir (profile 2, TEEN):** What If...?, Super Dragon Ball Heroes, My Hero Academia, Dragon Ball Super, ... at 8.94.
 - **Top picks, Mini (profile 3, KIDS):** Shrek 1.57, then Moana, Zootopia, Frozen, Wreck-It Ralph at 1.5; only KIDS titles. Inside Out must not appear, because it is on her My List.
 - **Continue watching, Riya:** Breaking Bad S1:E3 41%, Dune 62%, Parasite 6%, Stranger Things S1:E2 23%.
-- **Signal flags:** Riya has signals and picks; Mini has signals but no picks (her My List counts as a signal).
+- **Reason wording:** comes from the view's score columns. With the seed: Riya and Kabir "You watch a lot of …"; Mini (My List only) the same. After `npm run db:clear-activity`: Riya and Kabir "You picked …", Mini (no picks) "The newest titles …" with hero "Picked for you".
 
 ### 6.2 curl checks
 

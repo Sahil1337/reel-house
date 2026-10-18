@@ -132,7 +132,7 @@ Things that will bite you:
 - [ ] **A. `activity.service.ts`**: section 4 below (follows the existing spec).
 - [ ] **B1. Types**: shrink `src/types/recommendations.ts`.
 - [ ] **B2. Shared SQL fragments + `loadContentData`**.
-- [ ] **B3. `getGenreTaste` + `getSignalFlags`**.
+- [ ] **B3. `getGenreTaste`**.
 - [ ] **B4. `getTopPicks`**.
 - [ ] **B5. `getContinueWatching`**.
 - [ ] **B6. `getGenreTitles`**: the top-picks query filtered to one genre.
@@ -230,7 +230,7 @@ The result is unordered. Build a `Map<contentId, ContentSummary>` and read from 
 
 Checked on the seed: ids `{311, 33}` give Breaking Bad `[Crime, Drama]` (ADULT) and Dune `[Adventure, Science Fiction]` (TEEN).
 
-### B3. `getGenreTaste(profileId)` + `getSignalFlags(profileId)`
+### B3. `getGenreTaste(profileId)`
 
 The heart of the engine is already in the database: the `genre_taste` view (`drizzle/0001_genre_taste_view.sql`,
 open it to read the full SQL with comments). `getGenreTaste` just reads it:
@@ -263,16 +263,10 @@ Expected for **Riya (1)**:
 
 Kabir (2): Action 6, Adventure 4.5, Animation 3.5. Mini (3): Animation 1, Family 1 (My List only).
 
-`getSignalFlags` picks the wording of the top-picks and genre-row reasons:
-
-```sql
-SELECT EXISTS (SELECT 1 FROM watch_history WHERE profile_id = $1)
-    OR EXISTS (SELECT 1 FROM rating        WHERE profile_id = $1)
-    OR EXISTS (SELECT 1 FROM my_list       WHERE profile_id = $1) AS has_signals,
-       EXISTS (SELECT 1 FROM profile_genre_preference WHERE profile_id = $1) AS has_picks;
-```
-
-Expected: Riya `t, t`; Mini (3) `t, f` (her My List counts as a signal).
+The reason wording needs no extra query: `getGenreTaste` also returns the view's `watch_score`, `rating_score`,
+`my_list_score` and `pick_score`. If any genre has watch + rating + my-list points, the taste comes from real
+activity ("You watch a lot of …"); if there are rows but only pick points, it comes from onboarding ("You picked …");
+no rows at all means nothing yet ("The newest titles …", hero "Picked for you").
 
 ### B4. `getTopPicks(profile, limit)` → `{ contentId, score }[]`
 
@@ -371,7 +365,6 @@ The Prestige 10.83, Fallout 10.73. Many of these are also her top picks, which i
 ```
 1. In parallel (Promise.all):
      taste      = getGenreTaste(id)
-     flags      = getSignalFlags(id)
      picks      = getTopPicks(profile, ROW_SIZE * 2)
      continueRow = getContinueWatching(id, level)
 2. In parallel (needs step 1):
@@ -383,9 +376,10 @@ The Prestige 10.83, Fallout 10.73. Many of these are also her top picks, which i
    (continue-watching is not deduped)
 4. summaries = loadContentData(every id from steps 1–3)   ← ONE query
 5. Build HomeRow[] in the order of section 1, using REASONS:
-     top-picks reason: hasSignals → topPicks · only hasPicks → topPicksPickedGenres · neither → topPicksNoSignals
-     genre rows reason: hasSignals → genreWatched(name) · else genrePicked(name)
-     hero reason: hasSignals || hasPicks → heroPick(name) · else heroPopular ("Picked for you")
+     fromActivity = any taste row with watch + rating + my-list score > 0
+     top-picks reason: no taste rows → topPicksNoSignals · fromActivity → topPicks · else topPicksPickedGenres
+     genre rows reason: fromActivity → genreWatched(name) · else genrePicked(name)
+     hero reason: taste rows → heroPick(name) · else heroPopular ("Picked for you")
    Drop rows with items.length === 0.
 6. return { profileId, hero, rows, generatedAt: new Date().toISOString() }
 ```

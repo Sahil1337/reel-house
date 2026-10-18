@@ -1,10 +1,14 @@
 /** Shapes for the Home page (GET /api/profiles/:profileId/home) and the recommendation queries behind it. */
 import type { ContentSummary, Episode } from "./catalog";
 
-/** One row of the genre_taste view for a profile: how much it likes this genre. */
+/** One row of the genre_taste view for a profile: how much it likes this genre, and from which signals. */
 export interface GenreTaste {
   genreId: number;
   genre: string;
+  watchScore: number;
+  ratingScore: number;
+  myListScore: number;
+  pickScore: number;
   tasteScore: number;
 }
 

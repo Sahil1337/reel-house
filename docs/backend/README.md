@@ -407,6 +407,7 @@ The seed fills the database with the demo catalogue, accounts and activity. It l
 
 - It **resets the tables before inserting**: all 16 tables are truncated with `RESTART IDENTITY CASCADE` (restart id counters, and also empty any table that points at them).
 - Then everything is inserted **in one transaction** (a failure leaves the database unchanged), so re-running `npm run db:seed` always gives the same clean, known state.
+- To test viewing activity from scratch, `npm run db:clear-activity` empties `watch_history`, `my_list` and `rating` (users, profiles, picks and the catalogue stay). Every profile is then at cold start; `npm run db:seed` brings the demo activity back.
 - Identity ids are never inserted explicitly. Rows are inserted, ids are read back with `RETURNING`, and snapshot/mock keys are mapped to them in memory.
 - It inserts in the same order as `src/server/mocks` assigns ids (genres in snapshot = alphabetical order, movies before series, mock users/profiles/subscriptions/payments by their file ids, history by `watched_at`). So the ids normally match the mock layer's. The curl examples in section 4 rely on that, so confirm with a quick query if something looks off.
 - Nothing is seeded for recommendations: they are never stored, and Home computes them from `genre_taste` on every request.
