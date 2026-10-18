@@ -60,11 +60,11 @@ Phase 3: Admin Dashboard & Live Ingestion [COMPLETED]
   └── 3.3 TMDB Import Transaction    (Multi-table atomic ingestion in dependency order) [DONE]
            │
            ▼
-Phase 4: Admin Content Management
-  ├── 4.1 listContentForAdmin        (Paginated catalog table with subquery counts)
-  ├── 4.2 getContentDeletionImpact   (Blast radius cascade preview)
-  ├── 4.3 deleteContent              (Cascade deletion)
-  └── 4.4 updateContent              (Metadata update with conflict detection)
+Phase 4: Admin Content Management [DONE]
+  ├── 4.1 listContentForAdmin        (Paginated catalog table with subquery counts) [DONE]
+  ├── 4.2 getContentDeletionImpact   (Blast radius cascade preview) [DONE]
+  ├── 4.3 deleteContent              (Cascade deletion) [DONE]
+  └── 4.4 updateContent              (Metadata update with conflict detection) [DONE]
            │
            ▼
 Phase 5: Auth Hardening & Cleanup
