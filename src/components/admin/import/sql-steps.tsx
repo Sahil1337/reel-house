@@ -133,7 +133,7 @@ function Step({ entry, mode, last }: { entry: SqlStatement; mode: SqlMode; last:
 }
 
 /** "$1 = 27205" for the first few params, then "+N more". */
-function ParamChips({ params }: { params: SqlParam[] }) {
+export function ParamChips({ params }: { params: SqlParam[] }) {
   const shown = params.slice(0, MAX_PARAM_CHIPS);
   const rest = params.length - shown.length;
   return (

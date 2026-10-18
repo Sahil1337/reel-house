@@ -16,5 +16,77 @@
     "endDate": "2026-07-10T09:30:00.000Z",
     "status": "CANCELLED",
     "createdAt": "2026-04-10T09:30:00.000Z"
+  },
+  {
+    "subscriptionId": 3,
+    "userId": 3,
+    "planId": 2,
+    "startDate": "2026-03-05T10:20:00.000Z",
+    "endDate": "2026-06-05T10:20:00.000Z",
+    "status": "EXPIRED",
+    "createdAt": "2026-03-05T10:20:00.000Z"
+  },
+  {
+    "subscriptionId": 4,
+    "userId": 3,
+    "planId": 1,
+    "startDate": "2026-09-05T10:20:00.000Z",
+    "endDate": "2026-11-05T10:20:00.000Z",
+    "status": "ACTIVE",
+    "createdAt": "2026-09-05T10:20:00.000Z"
+  },
+  {
+    "subscriptionId": 5,
+    "userId": 4,
+    "planId": 2,
+    "startDate": "2026-08-20T15:00:00.000Z",
+    "endDate": "2026-11-20T15:00:00.000Z",
+    "status": "ACTIVE",
+    "createdAt": "2026-08-20T15:00:00.000Z"
+  },
+  {
+    "subscriptionId": 6,
+    "userId": 5,
+    "planId": 1,
+    "startDate": "2026-05-12T08:10:00.000Z",
+    "endDate": "2026-08-12T08:10:00.000Z",
+    "status": "EXPIRED",
+    "createdAt": "2026-05-12T08:10:00.000Z"
+  },
+  {
+    "subscriptionId": 7,
+    "userId": 6,
+    "planId": 2,
+    "startDate": "2026-06-01T19:00:00.000Z",
+    "endDate": "2026-08-15T12:00:00.000Z",
+    "status": "CANCELLED",
+    "createdAt": "2026-06-01T19:00:00.000Z"
+  },
+  {
+    "subscriptionId": 8,
+    "userId": 7,
+    "planId": 1,
+    "startDate": null,
+    "endDate": null,
+    "status": "PENDING",
+    "createdAt": "2026-10-16T11:30:00.000Z"
+  },
+  {
+    "subscriptionId": 9,
+    "userId": 8,
+    "planId": 2,
+    "startDate": "2026-10-02T16:45:00.000Z",
+    "endDate": "2027-01-02T16:45:00.000Z",
+    "status": "ACTIVE",
+    "createdAt": "2026-10-02T16:45:00.000Z"
+  },
+  {
+    "subscriptionId": 10,
+    "userId": 9,
+    "planId": 1,
+    "startDate": null,
+    "endDate": null,
+    "status": "CANCELLED",
+    "createdAt": "2026-09-28T09:20:00.000Z"
   }
 ]

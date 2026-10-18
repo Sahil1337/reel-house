@@ -112,7 +112,7 @@ The backend is split into a **contract** (the routes) and a **spec** (the servic
    when the backend becomes real.
 2. **The "functions to write" spec lives in the service JSDoc.** `src/server/services` has one
    `<domain>.service.ts` per concern: `users`, `profiles`, `catalog`, `activity`, `recommendations`,
-   `billing`, `payments`, `admin`. Every exported function documents its steps, SQL, the tables and
+   `billing`, `payments`, `admin` (plus `admin-content` and `admin-billing` for the admin content, plan and subscription tools). Every exported function documents its steps, SQL, the tables and
    keys it relies on, transaction and idempotency notes, edge cases (unique keys, upserts, cascades,
    the 90% "completed" rule, maturity filtering, …), what it throws, who calls it, and what the mock
    does today. `recommendations.service.ts` documents the whole home-feed pipeline: interaction
@@ -133,7 +133,9 @@ To add or change a mock user's password, generate a hash with the one-liner in
 
 ## Admin panel
 
-`/admin` (sidebar shell from the component kit) has two pages:
+`/admin` (sidebar shell from the component kit) has five pages. Every write shows the PostgreSQL it
+runs, and the services behind them are mocks, so writes update the screen optimistically and say so in
+their toast ("Demo data — not saved until the backend is implemented"):
 
 - **Dashboard**: stat tiles (users, active subscriptions, titles, episodes, revenue this month), recent
   payments, most-watched titles, genre distribution and subscriptions by plan. Every widget has a
@@ -147,6 +149,24 @@ sql, explanation } } }`; the SQL strings live in `src/server/services/admin.serv
   (BEGIN, the upserts in dependency order, COMMIT), each with a short explanation, parameterized or
   inlined, with copy buttons for each statement and for the whole transaction. "Import" calls
   `POST /api/admin/content/import`, whose service persists nothing yet.
+- **Content** (`/admin/content`): every title with poster, type, year, age rating, genres and the
+  season / episode counts for series; search, type and genre filters and server-side pagination
+  (`GET /api/admin/content`). **Remove** opens a confirmation that lists what the delete cascades to
+  (`GET /api/admin/content/:id/impact`: genre links, credits, seasons, episodes, watch history, My List,
+  ratings and recommendations) and the `DELETE FROM content WHERE content_id = $1` that does it
+  (`DELETE /api/admin/content/:id`, 204). **Edit details** changes title, description, release date, age
+  rating and artwork (`PATCH /api/admin/content/:id`; 409 when the title, type and release date clash).
+- **Plans** (`/admin/plans`): plans with price, video quality, device limit and subscriber count. Add and
+  edit dialogs (`POST /api/admin/plans`, `PATCH /api/admin/plans/:id`) validate with zod and show the
+  `INSERT … RETURNING` / `UPDATE … WHERE plan_id` as you type; a price change never rewrites past
+  `payment.amount`. Delete (`DELETE /api/admin/plans/:id`) is refused with 409 while any subscription
+  references the plan (`ON DELETE RESTRICT`).
+- **Subscriptions** (`/admin/subscriptions`): all subscriptions joined with user and plan, filtered by
+  status and user email (`GET /api/admin/subscriptions?status=&q=&page=`). Row actions **Cancel**
+  (ACTIVE → CANCELLED, `end_date = now()`), **Extend** (add months to `end_date`) and **Change plan**
+  (an admin override: no payment is recorded, the new price applies from the next renewal) go through
+  `PATCH /api/admin/subscriptions/:id`, each with its SQL and the constraints it respects (one ACTIVE per
+  user, the dates CHECK).
 
 Unlike the mock services, the two TMDB routes (`GET /api/admin/tmdb/search`, `GET /api/admin/tmdb/:type/:tmdbId`)
 make **real** TMDB calls with `TMDB_API_KEY` from `.env`. They use the same client and mappers as the import
@@ -235,7 +255,7 @@ src/
       watch/[contentId]/   mock player (?episode=)
       (shell)/             pages with the top nav: browse, browse/genre/[genreId], search,
                            title/[contentId], my-list, history, account
-    admin/                 admin panel (layout calls requireAdmin): dashboard, import
+    admin/                 admin panel (layout calls requireAdmin): dashboard, import, content, plans, subscriptions
     api/                   thin REST routes: guard → parse → service → HTTP
       _lib/auth.ts         requireUser / requireOwnedProfile / requireAdmin guards (throw typed errors)
       _lib/http.ts         handleError (typed error → response), parseBody, parseWith, parseId
@@ -244,7 +264,7 @@ src/
       payments/            verify (Checkout's success handler), webhook (Razorpay events)
   components/
     ui/                    coss ui primitives (on Base UI)
-    admin/                 admin shell, dashboard widgets, import page, SQL code block
+    admin/                 admin shell, dashboard widgets, import / content / plans / subscriptions, SQL code block
     account/ auth/ browse/ content/ layout/ library/ marketing/
     onboarding/ player/ profiles/ search/ title/
     providers/             query-provider (TanStack QueryClientProvider)
@@ -257,11 +277,11 @@ src/
     cookies/               profile-cookie (browser side of the profileId cookie)
     format/                date / duration / price formatting
     razorpay/              checkout.ts: browser side, Checkout types and option helpers
-    sql/                   SQL text for display: import script builder, literal inlining, highlighter
+    sql/                   SQL text for display: import script, admin content / plan / subscription statements, literal inlining, highlighter
     tmdb/                  TMDB client + TMDB → snapshot mappers (shared with the import script)
     ui/                    segmented-control class helpers
     utils/                 cn() and friends (what `@/lib/utils` resolves to)
-    validation/            zod form schemas: auth.ts (sign-in, sign-up), profile.ts
+    validation/            zod form schemas: auth.ts (sign-in, sign-up), profile.ts, admin.ts (content, plans, subscriptions: forms and routes)
   server/                  SERVER-ONLY
     auth/                  password hashing (scrypt), signed session token, session cookie
     db/                    Drizzle: index.ts exports `db`, schema/ per area (being added)

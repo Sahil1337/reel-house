@@ -22,12 +22,14 @@ export function StatTiles({ widgets }: { widgets: AdminDashboard["widgets"] }) {
       />
       <StatTile
         label="Active subscriptions"
+        href="/admin/subscriptions"
         value={compact(activeSubscriptions.data.count)}
         detail="Status ACTIVE and not yet ended"
         action={<ViewSql title="Active subscriptions" widget={activeSubscriptions} />}
       />
       <StatTile
         label="Titles"
+        href="/admin/content"
         value={compact(titles.data.movies + titles.data.series)}
         detail={`${titles.data.movies.toLocaleString("en-IN")} films · ${titles.data.series.toLocaleString("en-IN")} series`}
         action={<ViewSql title="Titles" widget={titles} />}

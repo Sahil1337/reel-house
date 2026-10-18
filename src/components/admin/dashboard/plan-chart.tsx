@@ -32,6 +32,7 @@ export function PlanChart({
   return (
     <ChartCard
       title="Subscriptions by plan"
+      href="/admin/plans"
       description="subscription_plan ⟕ subscription, all time"
       action={<ViewSql title="Subscriptions by plan" widget={widget} />}
       className={className}

@@ -16,5 +16,68 @@
     "role": "ADMIN",
     "createdAt": "2026-04-01T08:00:00.000Z",
     "passwordHash": "scrypt$70237e47aad6c21c5512c87f4957260c$20f1cf7794a8a2dbfe126b6530ff77d3e33e95960b35ee86fc7d3978112a9ceef082dbdbfd2f4766e88f076ea74e518e289023b7ad49b91070f7ce25201af08a"
+  },
+  {
+    "userId": 3,
+    "name": "Aarav Iyer",
+    "email": "aarav.iyer@example.com",
+    "phone": "+91 98200 11234",
+    "role": "USER",
+    "createdAt": "2026-03-01T10:15:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 4,
+    "name": "Meera Nair",
+    "email": "meera.nair@example.com",
+    "phone": "+91 97311 55820",
+    "role": "USER",
+    "createdAt": "2026-04-18T14:40:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 5,
+    "name": "Kabir Rathore",
+    "email": "kabir.rathore@example.com",
+    "phone": null,
+    "role": "USER",
+    "createdAt": "2026-05-02T07:55:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 6,
+    "name": "Ananya Das",
+    "email": "ananya.das@example.com",
+    "phone": "+91 90044 28817",
+    "role": "USER",
+    "createdAt": "2026-05-25T18:20:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 7,
+    "name": "Vikram Joshi",
+    "email": "vikram.joshi@example.com",
+    "phone": "+91 99870 66301",
+    "role": "USER",
+    "createdAt": "2026-09-10T11:05:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 8,
+    "name": "Sneha Kulkarni",
+    "email": "sneha.kulkarni@example.com",
+    "phone": "+91 98925 40672",
+    "role": "USER",
+    "createdAt": "2026-09-22T16:30:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
+  },
+  {
+    "userId": 9,
+    "name": "Rohan Gupta",
+    "email": "rohan.gupta@example.com",
+    "phone": null,
+    "role": "USER",
+    "createdAt": "2026-09-27T09:10:00.000Z",
+    "passwordHash": "scrypt$a91d94c9a163785155109275edb36a79$e712305ac23942f72d9bfc5f3d51f6736cd8b8194833c1a12107f8debe14cb8c8ba5569701b51187a7dc96835d529df4e36c68930b77c8edeac4a60069f51b6f"
   }
 ]

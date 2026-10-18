@@ -3,12 +3,23 @@
  * Server components use src/lib/api/server.ts, which calls the same routes.
  */
 import type {
+  AdminContentFilters,
+  AdminContentRow,
+  AdminPage,
+  AdminPlan,
+  AdminSubscriptionAction,
+  AdminSubscriptionFilters,
+  AdminSubscriptionRow,
   ChangePlanInput,
   CheckoutOrder,
   ImportTitleInput,
   ImportTitleResult,
+  ContentDeletionImpact,
+  ContentDetail,
   ContentSummary,
   ContentType,
+  CreatePlanInput,
+  Genre,
   OnboardingInput,
   Profile,
   ProfileInput,
@@ -18,6 +29,8 @@ import type {
   TmdbMediaType,
   TmdbSearchResult,
   TmdbTitlePreview,
+  UpdateContentInput,
+  UpdatePlanInput,
   User,
   VerifyPaymentInput,
   WatchHistory,
@@ -62,6 +75,15 @@ async function request<T>(path: string, init?: Omit<RequestInit, "body"> & { bod
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(data.error ?? "Something went wrong. Try again.", response.status, data.code);
   return data as T;
+}
+
+/** `?q=…&page=…` for the admin list routes (shared with src/lib/api/server.ts). Skips empty values. */
+export function adminQueryString(filters: object): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  return query.toString();
 }
 
 const profilePath = (profileId: number, rest = "") => `/profiles/${profileId}${rest}`;
@@ -121,4 +143,32 @@ export const api = {
     request<TmdbTitlePreview>(`/admin/tmdb/${type}/${tmdbId}`, init),
   importTitle: (body: ImportTitleInput) =>
     request<ImportTitleResult>("/admin/content/import", { method: "POST", body }),
+
+  // Admin: content
+  listGenres: (init?: { signal?: AbortSignal }) => request<{ genres: Genre[] }>("/genres", init),
+  getContent: (contentId: number, init?: { signal?: AbortSignal }) =>
+    request<{ content: ContentDetail }>(`/content/${contentId}`, init),
+  listAdminContent: (filters: AdminContentFilters, init?: { signal?: AbortSignal }) =>
+    request<AdminPage<AdminContentRow>>(`/admin/content?${adminQueryString(filters)}`, init),
+  getContentImpact: (contentId: number, init?: { signal?: AbortSignal }) =>
+    request<ContentDeletionImpact>(`/admin/content/${contentId}/impact`, init),
+  updateContent: (contentId: number, body: UpdateContentInput) =>
+    request<{ content: AdminContentRow }>(`/admin/content/${contentId}`, { method: "PATCH", body }),
+  deleteContent: (contentId: number) => request<void>(`/admin/content/${contentId}`, { method: "DELETE" }),
+
+  // Admin: plans
+  listAdminPlans: (init?: { signal?: AbortSignal }) => request<{ plans: AdminPlan[] }>("/admin/plans", init),
+  createPlan: (body: CreatePlanInput) => request<{ plan: AdminPlan }>("/admin/plans", { method: "POST", body }),
+  updatePlan: (planId: number, body: UpdatePlanInput) =>
+    request<{ plan: AdminPlan }>(`/admin/plans/${planId}`, { method: "PATCH", body }),
+  deletePlan: (planId: number) => request<void>(`/admin/plans/${planId}`, { method: "DELETE" }),
+
+  // Admin: subscriptions
+  listAdminSubscriptions: (filters: AdminSubscriptionFilters, init?: { signal?: AbortSignal }) =>
+    request<AdminPage<AdminSubscriptionRow>>(`/admin/subscriptions?${adminQueryString(filters)}`, init),
+  updateSubscription: (subscriptionId: number, body: AdminSubscriptionAction) =>
+    request<{ subscription: AdminSubscriptionRow }>(`/admin/subscriptions/${subscriptionId}`, {
+      method: "PATCH",
+      body,
+    }),
 };

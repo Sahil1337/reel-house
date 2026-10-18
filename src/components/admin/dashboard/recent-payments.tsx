@@ -18,6 +18,7 @@ export function RecentPayments({
   return (
     <ChartCard
       title="Recent payments"
+      href="/admin/subscriptions"
       description="payment ⋈ subscription ⋈ user ⋈ subscription_plan, newest first"
       action={<ViewSql title="Recent payments" widget={widget} />}
       className={className}

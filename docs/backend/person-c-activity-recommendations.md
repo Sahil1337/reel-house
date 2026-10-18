@@ -1,11 +1,15 @@
 # Person C: Sahil — activity & recommendations
 
-Sahil, you own **what a profile does** (watch progress, History, My List, ratings, the title-page state) and **what
-Home shows because of it** (the recommendation pipeline). Read [README.md](README.md) first (architecture,
-setup, conventions, curl testing); this file is the complete spec for your two services and the pipeline
-behind them. Schema: [`../schema/SCHEMA.md`](../schema/SCHEMA.md) ("Viewing activity", "Recommendations", "Ranking"). The
-Neon database already has the migrations (including the `interaction_score` view and the `content_similarity`
-materialized view) and the seeded data, so you can run every query below against real rows right away.
+Sahil, you own two things. The first is **what a profile does**: watch progress, History, My List, ratings, and the state of a title page. The second is **what Home shows because of it**: the recommendation pipeline.
+
+Read [README.md](README.md) first (architecture, setup, conventions, curl testing). This file is the complete spec for your two services and the pipeline behind them. The schema is in [`../schema/SCHEMA.md`](../schema/SCHEMA.md) (see "Viewing activity", "Recommendations" and "Ranking").
+
+The Neon database already has the migrations and the seeded data. That includes the `interaction_score` view and the `content_similarity` materialized view. So you can run every query below against real rows right away.
+
+Two terms you will see a lot:
+
+- **View**: a saved query that behaves like a table. It is always up to date because it re-runs on every read.
+- **Materialized view**: a saved query whose result is stored on disk like a table. It is fast to read but only changes when you refresh it.
 
 ## Table of contents
 
@@ -24,13 +28,21 @@ materialized view) and the seeded data, so you can run every query below against
 
 ## 1. Scope
 
-| Files you own                                    |                                                                                                                                                                                                                        |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/server/services/activity.service.ts`        | `recordProgress`, `listHistory`, `removeHistoryEntry`, `listMyList`, `addToMyList`, `removeFromMyList`, `rateTitle`, `removeRating`, `getTitleActivity`, `isInMyList`, `getRating`, `getResumePoint`, `getNextEpisode` |
-| `src/server/services/recommendations.service.ts` | `ROW_SIZE`, `WEIGHTS`, `getHomeFeed`, `shouldRefreshRecommendations`, `computeInteractionScores`, `generateCandidates`, `rankCandidates`, `buildHomeRows`, `storeRecommendations`, `refreshContentSimilarity`          |
-| a refresh trigger for `content_similarity`       | npm script and/or guarded route (section 7.2)                                                                                                                                                                          |
+This section lists exactly what is yours: the files, the routes, and the tables.
 
-| Routes (all `requireOwnedProfile`)                        | Service function            |
+### Files you own
+
+- `src/server/services/activity.service.ts`
+  - Functions: `recordProgress`, `listHistory`, `removeHistoryEntry`, `listMyList`, `addToMyList`, `removeFromMyList`, `rateTitle`, `removeRating`, `getTitleActivity`, `isInMyList`, `getRating`, `getResumePoint`, `getNextEpisode`.
+- `src/server/services/recommendations.service.ts`
+  - Exports: `ROW_SIZE`, `WEIGHTS`, `getHomeFeed`, `shouldRefreshRecommendations`, `computeInteractionScores`, `generateCandidates`, `rankCandidates`, `buildHomeRows`, `storeRecommendations`, `refreshContentSimilarity`.
+- A refresh trigger for `content_similarity`: an npm script and/or a guarded route (section 7.2).
+
+### Routes you serve
+
+All of these use `requireOwnedProfile` (the guard that checks the profile belongs to the signed-in user).
+
+| Route                                                     | Service function            |
 | --------------------------------------------------------- | --------------------------- |
 | `POST /api/profiles/:profileId/progress`                  | `recordProgress`            |
 | `GET /api/profiles/:profileId/history`                    | `listHistory`               |
@@ -41,37 +53,47 @@ materialized view) and the seeded data, so you can run every query below against
 | `GET /api/profiles/:profileId/titles/:contentId`          | `getTitleActivity`          |
 | `GET /api/profiles/:profileId/home`                       | `getHomeFeed`               |
 
-Tables you own: `watch_history`, `my_list`, `rating`, `recommendation`. You read: `interaction_score` (view),
-`content_similarity` (materialized view), `profile_genre_preference`, `profile`, `content`, `content_genre`, `genre`,
-`content_credit`, `person`, `season`, `episode`. Onboarding itself (`PUT .../onboarding`) is Tejasva's (A); you only read what it
-stores (`profile_genre_preference`, `profile.onboarded_at`).
+### Tables
 
-**Completed is not a column.** A `watch_history` row is completed when `progress_percent >= 90` (SQL) /
-`isCompleted(progressPercent)` from `@/lib/content/progress` with `COMPLETED_THRESHOLD` (TS).
+- **You own (you write them):** `watch_history`, `my_list`, `rating`, `recommendation`.
+- **You only read:** `interaction_score` (view), `content_similarity` (materialized view), `profile_genre_preference`, `profile`, `content`, `content_genre`, `genre`, `content_credit`, `person`, `season`, `episode`.
+- **Onboarding is not yours.** `PUT .../onboarding` belongs to Tejasva (A). You only read what it stores: `profile_genre_preference` and `profile.onboarded_at`.
 
-All routes are already ownership-checked by `requireOwnedProfile` before your functions run, so `profileId` is
-always the signed-in user's profile. Still filter every query by `profile_id`.
+### Two rules to remember
+
+- **"Completed" is not a column.** A `watch_history` row is completed when `progress_percent >= 90`. In SQL write that out. In TypeScript use `isCompleted(progressPercent)` from `@/lib/content/progress`, which uses `COMPLETED_THRESHOLD`.
+- **Ownership is already checked.** `requireOwnedProfile` runs before your functions, so `profileId` is always the signed-in user's profile. Still filter every query by `profile_id`.
 
 ---
 
 ## 2. Dependencies on A, and what to stub
 
-| You need                                                                | From                                | Until it lands                                                                                                                                                                                     |
-| ----------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `requireOwnedProfile` -> `getOwnedProfile`, `findUserById`              | A (Tejasva)                         | The mock lookups find the seeded profiles 1-3 (user 1) because the seed uses the same ids. Keep working against the mock-backed guards and test only with those until Tejasva merges the real ones |
-| `getContentDetail(contentId)` (existence check in `getTitleActivity`)   | A (Tejasva): `catalog.service`      | The mock catalogue has the same 500 ids; works unchanged                                                                                                                                           |
-| Catalogue rows (`content`, `content_genre`, credits, seasons, episodes) | seeded                              | No stub needed                                                                                                                                                                                     |
-| `getSimilarTitles` SQL (for "Because you liked X")                      | A (Tejasva)                         | You can copy the SQL (Tejasva's file section 7.5) into your own query returning `item_sim` and `content_sim` separately; nothing blocks you                                                        |
-| `profile_genre_preference` / `onboarded_at` writes                      | A (Tejasva): `saveGenrePreferences` | The seed has picks for profiles 1 and 2 (profile 3 has none: cold start without picks)                                                                                                             |
+Some of your work needs things Tejasva (A) is still building. For each one, this is what you need and what to do until it lands.
 
-Who depends on you: Tejasva's (A) `getSimilarTitles` reads `content_similarity`, which you keep fresh; the dashboard's
-`mostWatched` / the popularity ranking read the `watch_history` rows you write.
+- **`requireOwnedProfile` -> `getOwnedProfile`, `findUserById`** (from Tejasva)
+  - Until it lands: the mock lookups find the seeded profiles 1-3 (user 1) because the seed uses the same ids.
+  - Keep working against the mock-backed guards and test only with those until Tejasva merges the real ones.
+- **`getContentDetail(contentId)`** (from Tejasva, `catalog.service`; used for the existence check in `getTitleActivity`)
+  - Until it lands: the mock catalogue has the same 500 ids, so it works unchanged.
+- **Catalogue rows** (`content`, `content_genre`, credits, seasons, episodes)
+  - Seeded. No stub needed.
+- **`getSimilarTitles` SQL** (from Tejasva; used for "Because you liked X")
+  - You can copy the SQL (Tejasva's file, section 7.5) into your own query. It must return `item_sim` and `content_sim` separately. Nothing blocks you.
+- **`profile_genre_preference` / `onboarded_at` writes** (from Tejasva, `saveGenrePreferences`)
+  - The seed has picks for profiles 1 and 2. Profile 3 has none, which gives you a cold start without picks.
+
+Who depends on you:
+
+- Tejasva's (A) `getSimilarTitles` reads `content_similarity`, which you keep fresh.
+- The dashboard's `mostWatched` and the popularity ranking read the `watch_history` rows you write.
 
 ---
 
 ## 3. Ordered checklist
 
-- [ ] **0. Prep**: branch `feat/activity-recs`, own Neon branch in `.env`, `npm run dev`, `db:studio` to look at `watch_history`, `my_list`, `rating`; run the stage-1 query (section 8.1) and compare with the table there.
+Work through these in order. Each step builds on the one before.
+
+- [ ] **0. Prep**: branch `feat/activity-recs`, own Neon branch in `.env`, `npm run dev`, `db:studio` to look at `watch_history`, `my_list`, `rating`; run the stage-1 query (section 8.1) and compare with the list there.
 - [ ] **1. My List**: `listMyList`, `addToMyList`, `removeFromMyList` (+ `isInMyList`). curl add twice (201 both), list, remove twice.
 - [ ] **2. Ratings**: `rateTitle`, `removeRating` (+ `getRating`). curl 5, then 3, value 6 -> 422, unknown title -> 404.
 - [ ] **3. History**: `listHistory`, `removeHistoryEntry`. History page; second delete -> 404.
@@ -90,28 +112,44 @@ Who depends on you: Tejasva's (A) `getSimilarTitles` reads `content_similarity`,
 
 ## 4. `activity.service.ts`
 
-Types: `WatchHistory { historyId, profileId, contentId, episodeId | null, watchedAt (ISO), progressPercent }`,
-`HistoryItem = WatchHistory & { content: ContentSummary; episode: (Episode & { seasonNumber }) | null }`,
-`MyListItem = ContentSummary & { addedAt }`, `Rating { profileId, contentId, value, ratedAt }`,
-`ProgressInput { contentId, episodeId | null, progressPercent }`, `TitleActivity { inMyList, rating, resume }`.
-`ContentSummary` needs `genres` (use the `json_agg` subquery from Tejasva's (A) `searchContent`, copied) and
-`maturityLevel` (`maturity_of(c.age_rating)`).
+This service records what a profile does (progress, My List, ratings) and reads it back (History, title page state). Every function here is small. The only tricky one is `recordProgress`, because the player calls it constantly.
+
+### Types used in this file
+
+- `WatchHistory { historyId, profileId, contentId, episodeId | null, watchedAt (ISO), progressPercent }`
+- `HistoryItem = WatchHistory & { content: ContentSummary; episode: (Episode & { seasonNumber }) | null }`
+- `MyListItem = ContentSummary & { addedAt }`
+- `Rating { profileId, contentId, value, ratedAt }`
+- `ProgressInput { contentId, episodeId | null, progressPercent }`
+- `TitleActivity { inMyList, rating, resume }`
+
+`ContentSummary` needs two extra things:
+
+- `genres`: use the `json_agg` subquery (it packs the rows into one JSON array) from Tejasva's (A) `searchContent`, copied.
+- `maturityLevel`: `maturity_of(c.age_rating)`.
+
+### SQL terms used below
+
+- **Upsert**: insert a row, or update the existing one if it is already there.
+- **`ON CONFLICT`**: the Postgres clause that turns an `INSERT` into an upsert. It says what to do when the key already exists.
+- **Idempotent**: running the same call twice leaves the data the same as running it once.
+- **Transaction**: several statements that either all succeed or all roll back.
+- **FK (foreign key)**: a column that must point at a real row in another table.
+- **CHECK**: a rule on a column that the database enforces (for example, "between 0 and 100").
+- **PK (primary key)**: the column(s) that uniquely identify a row.
 
 ### 4.1 `recordProgress(profileId: number, input: ProgressInput): Promise<WatchHistory>`
 
-Records how far a profile got in a title or episode. The player reports this on pause, seek, the 90% mark, the
-end, every 10 s while playing, and on page hide (`keepalive`). **Hot path: one round trip plus the cheap
-recommendation update.**
+**What it does:** Records how far a profile got in a title or episode. The player reports this on pause, seek, the 90% mark, the end, every 10 s while playing, and on page hide (`keepalive`, so the browser still sends the request while the page closes). This is the hot path (called very often): keep it to one round trip plus the cheap recommendation update.
 
-Steps:
+**Steps:**
 
-1. Validate: clamp and round `progressPercent` to 0-100 (the CHECK is the backstop). The title must exist
-   (`NotFoundError`). A **movie** stores `episode_id = NULL` whatever the client sent. A **series** needs an
-   `episodeId` that belongs to the title (`episode` join `season` on `content_id`), otherwise `ValidationError` (422).
-2. Upsert the single row for (profile, content, episode) and bump `watched_at`. Re-watching a finished title
-   overwrites its progress (a fresh pass), so a re-watch moves to the top of History.
-3. Feedback loop: if the title now counts as completed (progress >= 90) mark its recommendation `WATCHED`. (Any
-   progress write on a recommended title also moves `SHOWN` -> `CLICKED`.)
+1. Validate. Clamp and round `progressPercent` to 0-100 (the CHECK is the backstop). The title must exist, otherwise `NotFoundError`.
+2. A **movie** stores `episode_id = NULL`, whatever the client sent. A **series** needs an `episodeId` that belongs to the title (`episode` joined to `season` on `content_id`), otherwise `ValidationError` (422).
+3. Upsert the single row for (profile, content, episode) and bump `watched_at`. Re-watching a finished title overwrites its progress (a fresh pass), so a re-watch moves to the top of History.
+4. Feedback loop: if the title now counts as completed (progress >= 90), mark its recommendation `WATCHED`. Any progress write on a recommended title also moves `SHOWN` -> `CLICKED`.
+
+**SQL:**
 
 ```sql
 SELECT content_type FROM content WHERE content_id = $1;                       -- NotFoundError when no row
@@ -129,18 +167,7 @@ UPDATE recommendation
    AND rec_status IN ('SHOWN', 'CLICKED');
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `watch_history`, `content`, `episode`, `season`, `recommendation`. UNIQUE NULLS NOT DISTINCT `(profile_id, content_id, episode_id)` (constraint `watch_history_profile_content_episode_key`; PostgreSQL 15+, so the NULL episode of a movie still conflicts with itself), CHECK `progress_percent BETWEEN 0 AND 100`, FKs on `profile_id` / `content_id` / `episode_id`, PK `(profile_id, content_id)` on `recommendation` |
-| Transaction / idempotent | yes (the upsert and the `rec_status` update commit together) / yes (same input -> same row; only `watched_at` moves)                                                                                                                                                                                                                                                                                                       |
-| Edge cases               | a non-finite `progressPercent` is rejected by the route's zod; the episode-belongs-to-title check is a rule the schema cannot declare (SCHEMA.md "Known limits"); `ON CONFLICT (profile_id, content_id, episode_id)` works with the NULLS NOT DISTINCT key; if inference gives trouble use `ON CONFLICT ON CONSTRAINT watch_history_profile_content_episode_key`; episode rows also store `content_id`                     |
-| Throws                   | `NotFoundError("Title not found.")`; `ValidationError` when a series has no `episodeId` or the episode belongs to another title                                                                                                                                                                                                                                                                                            |
-| Called by                | `POST /api/profiles/:profileId/progress`                                                                                                                                                                                                                                                                                                                                                                                   |
-| Mock today               | returns a plausible row (clamped/rounded percent, `historyId` = row count + 1, `watchedAt` = now), persists nothing, skips the title/episode checks                                                                                                                                                                                                                                                                        |
-
-Return: `{ historyId, profileId, contentId, episodeId, watchedAt (ISO), progressPercent }`.
-
-Drizzle for the upsert:
+Drizzle version of the upsert:
 
 ```ts
 await tx
@@ -153,13 +180,38 @@ await tx
   .returning();
 ```
 
+**Rules to respect:**
+
+- Tables and keys: `watch_history`, `content`, `episode`, `season`, `recommendation`.
+- `watch_history` has UNIQUE NULLS NOT DISTINCT `(profile_id, content_id, episode_id)`, constraint `watch_history_profile_content_episode_key`. This needs PostgreSQL 15+. It makes the NULL episode of a movie still conflict with itself (normally two NULLs count as different).
+- Other constraints: CHECK `progress_percent BETWEEN 0 AND 100`; FKs on `profile_id` / `content_id` / `episode_id`; PK `(profile_id, content_id)` on `recommendation`.
+- Transaction: yes. The upsert and the `rec_status` update commit together.
+- Idempotent: yes. The same input gives the same row; only `watched_at` moves.
+- A non-finite `progressPercent` is rejected by the route's zod (the request-validation library).
+- "The episode belongs to the title" is a rule the schema cannot declare (SCHEMA.md "Known limits"), so the service checks it.
+- `ON CONFLICT (profile_id, content_id, episode_id)` works with the NULLS NOT DISTINCT key. If inference gives trouble, use `ON CONFLICT ON CONSTRAINT watch_history_profile_content_episode_key`.
+- Episode rows also store `content_id`.
+
+**Errors:**
+
+- `NotFoundError("Title not found.")` -> 404.
+- `ValidationError` when a series has no `episodeId`, or the episode belongs to another title -> 422.
+
+**Mock today:** Returns a plausible row (clamped/rounded percent, `historyId` = row count + 1, `watchedAt` = now), persists nothing, and skips the title/episode checks.
+
+**Used by:** `POST /api/profiles/:profileId/progress`. Return value: `{ historyId, profileId, contentId, episodeId, watchedAt (ISO), progressPercent }`.
+
 ### 4.2 `listHistory(profileId: number): Promise<HistoryItem[]>`
 
-The History page: everything the profile watched, newest first.
+**What it does:** Powers the History page: everything the profile watched, newest first.
 
-Steps: join each `watch_history` row with its title; `LEFT JOIN episode` (`episode_id` is NULL for movies) and
-`season` for `season_number`; shape rows as `HistoryItem` (the row + `content` as a `ContentSummary` with genres + `episode`
-(Episode + `seasonNumber`, or `null`)).
+**Steps:**
+
+1. Join each `watch_history` row with its title.
+2. `LEFT JOIN episode` (`episode_id` is NULL for movies) and `season` for `season_number`. (A LEFT JOIN keeps rows that have no match on the right side.)
+3. Shape the rows as `HistoryItem`: the row, plus `content` as a `ContentSummary` with genres, plus `episode` (Episode + `seasonNumber`, or `null`).
+
+**SQL:**
 
 ```sql
 SELECT w.history_id, w.profile_id, w.content_id, w.episode_id, w.watched_at, w.progress_percent,
@@ -173,68 +225,152 @@ SELECT w.history_id, w.profile_id, w.content_id, w.episode_id, w.watched_at, w.p
 -- (+ the content's genres, as catalog.service builds a ContentSummary.)
 ```
 
-(`c.*, e.*` collide on `title`, `description`, `release_date`, `duration_minutes`: select explicit aliased columns.)
+Note: `c.*, e.*` collide on `title`, `description`, `release_date`, `duration_minutes`. Select explicit aliased columns instead.
 
-|                          |                                                                                                                                                                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tables / keys            | `watch_history`, `content`, `content_genre`, `genre`, `episode`, `season`; `watch_history_recent_idx`. One row per (profile, content, episode), so a re-watch moves its row to the top instead of adding one |
-| Transaction / idempotent | no / yes                                                                                                                                                                                                     |
-| Edge cases               | no history -> `[]`                                                                                                                                                                                           |
-| Called by                | `GET /api/profiles/:profileId/history` (and the History page via `serverApi.getHistory`)                                                                                                                     |
-| Mock today               | the profile's rows from `data/mock/watch-history.json` (already newest first), joined in memory                                                                                                              |
+**Rules to respect:**
+
+- Tables and keys: `watch_history`, `content`, `content_genre`, `genre`, `episode`, `season`; index `watch_history_recent_idx`.
+- There is one row per (profile, content, episode), so a re-watch moves its row to the top instead of adding one.
+- Transaction: no. Idempotent: yes (a read).
+- No history -> `[]`.
+
+**Errors:** None.
+
+**Mock today:** The profile's rows from `data/mock/watch-history.json` (already newest first), joined in memory.
+
+**Used by:** `GET /api/profiles/:profileId/history` (and the History page via `serverApi.getHistory`).
 
 ### 4.3 `removeHistoryEntry(profileId: number, historyId: number): Promise<void>`
 
-Removes one entry from History (its interaction signal and Continue Watching card go with it).
+**What it does:** Removes one entry from History. Its interaction signal and its Continue Watching card go with it.
+
+**Steps:**
+
+1. Delete the row for `historyId`, restricted to this `profileId`.
+2. If zero rows were deleted, throw `NotFoundError`.
+
+**SQL:**
 
 ```sql
 DELETE FROM watch_history WHERE history_id = $2 AND profile_id = $1;       -- rowCount 0 -> 404
 ```
 
-The `profile_id` predicate is the ownership check. Zero rows deleted (unknown id, or someone else's) ->
-`NotFoundError("History entry not found.")` (the route uses that message for a bad id). Not idempotent (second delete = 404; the previous contract was a silent 204).
-Deleting a series' episode row leaves the other episodes' rows and the title's other signals in place. Called by
-`DELETE /api/profiles/:profileId/history/:historyId`. Mock today: does nothing and never throws (route answers 204).
+**Rules to respect:**
+
+- The `profile_id` predicate is the ownership check.
+- Zero rows deleted (unknown id, or someone else's) -> `NotFoundError("History entry not found.")`. The route uses that message for a bad id.
+- Not idempotent: a second delete is 404. (The previous contract was a silent 204.)
+- Deleting a series' episode row leaves the other episodes' rows and the title's other signals in place.
+
+**Errors:**
+
+- `NotFoundError("History entry not found.")` -> 404.
+
+**Mock today:** Does nothing and never throws (the route answers 204).
+
+**Used by:** `DELETE /api/profiles/:profileId/history/:historyId`.
 
 ### 4.4 `listMyList(profileId: number): Promise<MyListItem[]>`
 
-The My List page: saved titles, most recently added first.
+**What it does:** Powers the My List page: saved titles, most recently added first.
+
+**Steps:**
+
+1. Join `my_list` with `content` for this profile.
+2. Sort by `added_at` descending.
+3. Attach genres per title.
+
+**SQL:**
 
 ```sql
 SELECT c.*, m.added_at
   FROM my_list AS m JOIN content AS c ON c.content_id = m.content_id
  WHERE m.profile_id = $1
  ORDER BY m.added_at DESC;
+-- (+ genres per title.)
 ```
 
-(+ genres per title.) Tables `my_list`, `content`, `content_genre`, `genre`; PK `(profile_id, content_id)`. Empty list -> `[]`. Called by
-`GET /api/profiles/:profileId/my-list`. Mock today: the profile's rows from `my-list.json` in file order (not re-sorted), joined in memory.
+**Rules to respect:**
+
+- Tables and keys: `my_list`, `content`, `content_genre`, `genre`; PK `(profile_id, content_id)`.
+- Transaction: no. Idempotent: yes (a read).
+- Empty list -> `[]`.
+
+**Errors:** None.
+
+**Mock today:** The profile's rows from `my-list.json` in file order (not re-sorted), joined in memory.
+
+**Used by:** `GET /api/profiles/:profileId/my-list`.
 
 ### 4.5 `addToMyList(profileId: number, contentId: number): Promise<void>`
 
-Saves a title for later. Adding the same title twice is a no-op.
+**What it does:** Saves a title for later. Adding the same title twice is a no-op.
+
+**Steps:**
+
+1. Insert `(profile_id, content_id)`. `added_at` defaults to `now()`.
+2. If the pair already exists, do nothing.
+3. If the title does not exist, translate the FK failure into `NotFoundError`.
+
+**SQL:**
 
 ```sql
 INSERT INTO my_list (profile_id, content_id) VALUES ($1, $2)       -- added_at defaults to now()
 ON CONFLICT (profile_id, content_id) DO NOTHING;
 ```
 
-An unknown `content_id` violates the FK (SQLSTATE **23503**) -> `NotFoundError("Title not found.")`. Idempotent (`added_at`
-keeps the first time); not a transaction. Called by `POST /api/profiles/:profileId/my-list` (the route answers 201
-`{ contentId, inMyList: true }` either way). Mock today: does nothing and never throws.
+**Rules to respect:**
+
+- Idempotent: `added_at` keeps the first time.
+- Not a transaction.
+- An unknown `content_id` violates the FK (SQLSTATE **23503**, the Postgres error code for a foreign-key violation).
+- The route answers 201 `{ contentId, inMyList: true }` either way.
+
+**Errors:**
+
+- FK violation 23503 -> `NotFoundError("Title not found.")` -> 404.
+
+**Mock today:** Does nothing and never throws.
+
+**Used by:** `POST /api/profiles/:profileId/my-list`.
 
 ### 4.6 `removeFromMyList(profileId: number, contentId: number): Promise<void>`
+
+**What it does:** Removes a title from My List.
+
+**Steps:**
+
+1. Delete the `(profile_id, content_id)` row. If it was not there, nothing happens.
+
+**SQL:**
 
 ```sql
 DELETE FROM my_list WHERE profile_id = $1 AND content_id = $2;
 ```
 
-Idempotent (deleting nothing is fine); the title's other signals (rating, history) are untouched. Called by
-`DELETE /api/profiles/:profileId/my-list/:contentId` (route answers 200 `{ contentId, inMyList: false }`). Mock today: does nothing.
+**Rules to respect:**
+
+- Idempotent: deleting nothing is fine.
+- The title's other signals (rating, history) are untouched.
+- The route answers 200 `{ contentId, inMyList: false }`.
+
+**Errors:** None.
+
+**Mock today:** Does nothing.
+
+**Used by:** `DELETE /api/profiles/:profileId/my-list/:contentId`.
 
 ### 4.7 `rateTitle(profileId: number, contentId: number, value: number): Promise<Rating>`
 
-Rates a title 1-5 stars; re-rating replaces the old value. Feeds the home signals as `(value - 3) x 2`.
+**What it does:** Rates a title 1-5 stars; re-rating replaces the old value. The rating feeds the home signals as `(value - 3) x 2`.
+
+**Steps:**
+
+1. Upsert `(profile_id, content_id, value)`.
+2. On a repeat, replace `value` and move `rated_at` to now.
+3. Return the row. Nothing else needs updating (see the rules).
+
+**SQL:**
 
 ```sql
 INSERT INTO rating (profile_id, content_id, value) VALUES ($1, $2, $3)
@@ -243,76 +379,150 @@ DO UPDATE SET value = EXCLUDED.value, rated_at = now()
 RETURNING profile_id, content_id, value, rated_at;
 ```
 
-`value` is validated as an integer 1-5 by the route's zod (the CHECK `rating_value_check` is the backstop). Unknown
-`content_id` (FK 23503) -> `NotFoundError("Title not found.")`. Idempotent (same value -> same row; `rated_at`
-moves); nothing else needs updating: `interaction_score` is a view and always fresh, the `recommendation` table
-catches up on the next refresh (section 7.1). Called by `PUT /api/profiles/:profileId/ratings/:contentId`.
-Mock today: returns `{ profileId, contentId, value, ratedAt: now }`, persists nothing.
+**Rules to respect:**
+
+- `value` is validated as an integer 1-5 by the route's zod. The CHECK `rating_value_check` is the backstop.
+- Idempotent: the same value gives the same row; `rated_at` moves.
+- Nothing else needs updating. `interaction_score` is a view, so it is always fresh. The `recommendation` table catches up on the next refresh (section 7.1).
+
+**Errors:**
+
+- Unknown `content_id` (FK 23503) -> `NotFoundError("Title not found.")` -> 404.
+- A value outside 1-5 -> 422 (from the route's zod).
+
+**Mock today:** Returns `{ profileId, contentId, value, ratedAt: now }`, persists nothing.
+
+**Used by:** `PUT /api/profiles/:profileId/ratings/:contentId`.
 
 ### 4.8 `removeRating(profileId: number, contentId: number): Promise<void>`
+
+**What it does:** Deletes this profile's rating for a title.
+
+**Steps:**
+
+1. Delete the `(profile_id, content_id)` row. If it was not there, nothing happens.
+
+**SQL:**
 
 ```sql
 DELETE FROM rating WHERE profile_id = $1 AND content_id = $2;
 ```
 
-Idempotent. Called by `DELETE /api/profiles/:profileId/ratings/:contentId` (204). Mock today: does nothing.
+**Rules to respect:**
+
+- Idempotent.
+- The route answers 204.
+
+**Errors:** None.
+
+**Mock today:** Does nothing.
+
+**Used by:** `DELETE /api/profiles/:profileId/ratings/:contentId`.
 
 ### 4.9 `getTitleActivity(profileId: number, contentId: number): Promise<TitleActivity>`
 
-What this profile has done with one title: drives the title page (Play/Resume label, My List button, star rating)
-and where the player starts.
+**What it does:** Reports what this profile has done with one title. It drives the title page (Play/Resume label, My List button, star rating) and where the player starts.
 
-Steps:
+**Steps:**
 
-1. The title must exist (`getContentDetail` from `./catalog.service` -> `NotFoundError("Title not found.")`; a plain `SELECT 1 FROM content` with the same error is acceptable and cheaper).
-2. `inMyList = isInMyList`, `rating = getRating`, `resume = getResumePoint` (run the three in parallel with `Promise.all`).
-3. Optional feedback loop: opening the title page moves a SHOWN recommendation to CLICKED
-   (`UPDATE recommendation SET rec_status = 'CLICKED' WHERE profile_id = $1 AND content_id = $2 AND rec_status = 'SHOWN';`):
-   a write on a GET, so do it only if the team wants page-view granularity; `recordProgress` already covers the player (README 9.14).
+1. Check the title exists. Use `getContentDetail` from `./catalog.service` -> `NotFoundError("Title not found.")`. A plain `SELECT 1 FROM content` with the same error is acceptable and cheaper.
+2. Compute `inMyList = isInMyList`, `rating = getRating`, `resume = getResumePoint`. Run the three in parallel with `Promise.all` (JavaScript's "run these at the same time and wait for all").
+3. Optional feedback loop: opening the title page moves a SHOWN recommendation to CLICKED.
 
-|                          |                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `my_list`, `rating`, `watch_history`, `episode`, `season` (+ `content` for the existence check). PKs of `my_list` and `rating`, `watch_history_recent_idx` |
-| Transaction / idempotent | no / yes (read)                                                                                                                                            |
-| Edge cases               | a profile that never touched the title gets `{ inMyList: false, rating: null, resume: null }`                                                              |
-| Throws                   | `NotFoundError("Title not found.")`                                                                                                                        |
-| Called by                | `GET /api/profiles/:profileId/titles/:contentId` (and the title/player pages via `serverApi.getTitleActivity`)                                             |
-| Mock today               | the same three answers read from the mock db; `resume` is only an unfinished latest row (completed rows give null: no "next episode" yet)                  |
+**SQL:**
 
-### 4.10 Helpers of `getTitleActivity` (exported)
+```sql
+-- optional step 3 (a write on a GET, so only if the team wants page-view granularity):
+UPDATE recommendation SET rec_status = 'CLICKED'
+ WHERE profile_id = $1 AND content_id = $2 AND rec_status = 'SHOWN';
+```
 
-**`isInMyList(profileId: number, contentId: number): Promise<boolean>`**
+The other three queries are in the helpers (sections 4.10 to 4.12).
+
+**Rules to respect:**
+
+- Tables and keys: `my_list`, `rating`, `watch_history`, `episode`, `season` (+ `content` for the existence check). PKs of `my_list` and `rating`, index `watch_history_recent_idx`.
+- Transaction: no. Idempotent: yes (a read).
+- A profile that never touched the title gets `{ inMyList: false, rating: null, resume: null }`.
+- Step 3 is a write on a GET, so do it only if the team wants page-view granularity. `recordProgress` already covers the player (README 9.14).
+
+**Errors:**
+
+- `NotFoundError("Title not found.")` -> 404.
+
+**Mock today:** The same three answers read from the mock db. `resume` is only an unfinished latest row (completed rows give null: no "next episode" yet).
+
+**Used by:** `GET /api/profiles/:profileId/titles/:contentId` (and the title/player pages via `serverApi.getTitleActivity`).
+
+### 4.10 `isInMyList(profileId: number, contentId: number): Promise<boolean>`
+
+This is the first of four exported helpers of `getTitleActivity` (4.10 to 4.13).
+
+**What it does:** Says whether the title is on this profile's My List.
+
+**Steps:**
+
+1. Check whether a `my_list` row exists for the pair.
+
+**SQL:**
 
 ```sql
 SELECT EXISTS (SELECT 1 FROM my_list WHERE profile_id = $1 AND content_id = $2);
 ```
 
-Mock today: looks the pair up in `my-list.json`.
+**Rules to respect:**
 
-**`getRating(profileId: number, contentId: number): Promise<number | null>`**
+- A read; idempotent.
+
+**Errors:** None.
+
+**Mock today:** Looks the pair up in `my-list.json`.
+
+**Used by:** `getTitleActivity`.
+
+### 4.11 `getRating(profileId: number, contentId: number): Promise<number | null>`
+
+**What it does:** Returns this profile's star rating for the title, or `null` if it has none.
+
+**Steps:**
+
+1. Select `value` from `rating` for the pair.
+
+**SQL:**
 
 ```sql
 SELECT value FROM rating WHERE profile_id = $1 AND content_id = $2;
 ```
 
-Mock today: looks the pair up in `ratings.json`.
+**Rules to respect:**
 
-**`getResumePoint(profileId: number, contentId: number): Promise<TitleActivity["resume"]>`**: where Play should start for this title.
+- A read; idempotent.
 
-Steps:
+**Errors:** None.
+
+**Mock today:** Looks the pair up in `ratings.json`.
+
+**Used by:** `getTitleActivity`.
+
+### 4.12 `getResumePoint(profileId: number, contentId: number): Promise<TitleActivity["resume"]>`
+
+**What it does:** Decides where Play should start for this title. The result is `{ episodeId: number | null, progressPercent: number, label: string }`, or `null`.
+
+**Steps:**
 
 1. Take the latest `watch_history` row for the title (most recent `watched_at`).
-2. Decide, by what it was:
+2. Decide by what that row was (see the list below).
+3. "Completed" means `progress_percent >= 90` (`isCompleted`).
 
-| Latest row          | Result                                                                                                      |
-| ------------------- | ----------------------------------------------------------------------------------------------------------- |
-| movie, unfinished   | `{ episodeId: null, progressPercent, label: "Resume · 62%" }`                                               |
-| movie, completed    | `null` (Play starts over)                                                                                   |
-| episode, unfinished | that episode, label `"Resume S1:E3"` (`formatEpisodeCode(seasonNumber, episodeNumber)` from `@/lib/format`) |
-| episode, completed  | `getNextEpisode(contentId, episodeId)` at 0%, label `"Play S1:E4"`; `null` after the finale                 |
-| never watched       | `null`                                                                                                      |
+What to return for each kind of latest row:
 
-"Completed" = `progress_percent >= 90` (`isCompleted`).
+- **Movie, unfinished:** `{ episodeId: null, progressPercent, label: "Resume · 62%" }`.
+- **Movie, completed:** `null` (Play starts over).
+- **Episode, unfinished:** that episode, label `"Resume S1:E3"`. Build the code with `formatEpisodeCode(seasonNumber, episodeNumber)` from `@/lib/format`.
+- **Episode, completed:** `getNextEpisode(contentId, episodeId)` at 0%, label `"Play S1:E4"`. Return `null` after the finale.
+- **Never watched:** `null`.
+
+**SQL:**
 
 ```sql
 SELECT w.episode_id, w.progress_percent, s.season_number, e.episode_number
@@ -323,11 +533,30 @@ SELECT w.episode_id, w.progress_percent, s.season_number, e.episode_number
  ORDER BY w.watched_at DESC LIMIT 1;                -- watch_history_recent_idx
 ```
 
-Edge cases: a finale that is completed -> `null`; a series whose latest row is an unfinished earlier episode resumes that
-one (latest by `watched_at`, not by episode order). Result shape: `{ episodeId: number | null, progressPercent: number, label: string }`; for the next-episode case `progressPercent` is 0.
-Mock today: only the unfinished case (latest row, newest first in the mock file, with `!isCompleted`); completed titles return null, so "Play S1:E4" is not produced.
+**Rules to respect:**
 
-**`getNextEpisode(contentId: number, episodeId: number): Promise<Episode | null>`**: the episode that airs right after the given one, crossing into the next season; `null` after the finale.
+- A finale that is completed -> `null`.
+- A series whose latest row is an unfinished earlier episode resumes that one. "Latest" means by `watched_at`, not by episode order.
+- For the next-episode case, `progressPercent` is 0.
+- A read; idempotent.
+
+**Errors:** None.
+
+**Mock today:** Only the unfinished case (latest row, newest first in the mock file, with `!isCompleted`). Completed titles return null, so "Play S1:E4" is not produced.
+
+**Used by:** `getTitleActivity`.
+
+### 4.13 `getNextEpisode(contentId: number, episodeId: number): Promise<Episode | null>`
+
+**What it does:** Finds the episode that airs right after the given one, crossing into the next season when needed. Returns `null` after the finale.
+
+**Steps:**
+
+1. Look up the season number and episode number of the given episode.
+2. Among this title's episodes, keep those whose (season number, episode number) pair is greater. (Postgres can compare two-column "row values" like this directly.)
+3. Order by season then episode and take the first.
+
+**SQL:**
 
 ```sql
 SELECT e.*
@@ -341,16 +570,27 @@ SELECT e.*
  LIMIT 1;
 ```
 
-Tables `episode`, `season`; UNIQUE `(content_id, season_number)`, UNIQUE `(season_id, episode_number)`. An `episodeId` of another title -> `null` (the row comparison finds
-nothing for this content). Note: the label "Play S1:E4" needs the next episode's **season number**, which `Episode` lacks:
-keep this exported signature, and have `getResumePoint` use an internal variant of the query that also returns `s.season_number`.
-Mock today: returns `null`.
+**Rules to respect:**
+
+- Tables and keys: `episode`, `season`; UNIQUE `(content_id, season_number)`, UNIQUE `(season_id, episode_number)`.
+- An `episodeId` of another title -> `null` (the row comparison finds nothing for this content).
+- The label "Play S1:E4" needs the next episode's **season number**, which `Episode` lacks. Keep this exported signature, and have `getResumePoint` use an internal variant of the query that also returns `s.season_number`.
+
+**Errors:** None.
+
+**Mock today:** Returns `null`.
+
+**Used by:** `getResumePoint`.
 
 ---
 
 ## 5. `recommendations.service.ts`
 
-Exports (signatures exact):
+This service builds the Home page. It turns a profile's activity into a ranked list of titles, groups them into shelves ("rows") with a reason for each, and stores the result. Section 6 explains the ideas and the maths. This section is the contract for each function.
+
+### Exports
+
+Signatures are exact:
 
 ```ts
 export const ROW_SIZE = 18;                        // items per row
@@ -373,48 +613,53 @@ storeRecommendations(profileId: number, ranked: RankedCandidate[], rows: HomeRow
 refreshContentSimilarity(): Promise<void>
 ```
 
-`REASONS` (private const in the file) holds the row reason strings, so `buildHomeRows` and the stub share one source:
+### Types (from `@/types`)
 
-| Key                             | Text                                                                                             |
-| ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `continueWatching`              | `Pick up where you left off.`                                                                    |
-| `topPicks`                      | `Ranked from the genres and people you watch, what similar viewers enjoyed, and what's popular.` |
-| `topPicksPickedGenres`          | `Popular in the genres you picked — rate a few to personalise this row.`                         |
-| `topPicksNoSignals`             | `Popular titles to get you started — rate a few to personalise this row.`                        |
-| `becauseKnn(anchor)`            | `Viewers who enjoyed ${anchor} also watched these.`                                              |
-| `becauseSimilar(anchor)`        | `Shares genres and people with ${anchor}.`                                                       |
-| `trending`                      | `The most-watched titles on Reelhouse right now.`                                                |
-| `topRatedStrongest(genre)`      | `${genre} is your strongest genre — sorted by audience rating.`                                  |
-| `topRatedPicked(genre)`         | `You picked ${genre} during setup — here are its best-reviewed titles.`                          |
-| `morePerson(count, name, role)` | `You've enjoyed ${count} titles ${role === "DIRECTOR" ? "by" : "featuring"} ${name}.`            |
-| `genrePicked(genre)`            | `You picked ${genre} during setup.`                                                              |
-| `genreWatched(genre)`           | `You watch a lot of ${genre}.`                                                                   |
-| `heroPick(name)`                | `Our top pick for ${name} tonight`                                                               |
-| `heroPopular`                   | `Popular on Reelhouse`                                                                           |
+- `InteractionScores = Map<number, number>`
+- `Candidate { contentId, genreAffinity, peopleAffinity, itemKnn, popularityPrior }` (all 0-1)
+- `RankedCandidate = Candidate & { content: ContentSummary; affinity; score; match }`
+- `HomeBuild { hero: HomeHero | null; rows: HomeRow[] }`
+- `HomeRow { id, kind: HomeRowKind, title, reason, anchor?: { contentId, title }, items: RowItem[] }`
+- `RowItem { content, match?, progress?: { progressPercent, episode } }`
+- `HomeHero { content, reason, match? }`
+- `HomeFeed { profileId, hero, rows, generatedAt }`
 
-Types (from `@/types`): `InteractionScores = Map<number, number>`; `Candidate { contentId, genreAffinity, peopleAffinity, itemKnn, popularityPrior }`
-(all 0-1); `RankedCandidate = Candidate & { content: ContentSummary; affinity; score; match }`; `HomeBuild { hero: HomeHero | null; rows: HomeRow[] }`;
-`HomeRow { id, kind: HomeRowKind, title, reason, anchor?: { contentId, title }, items: RowItem[] }`; `RowItem { content, match?, progress?: { progressPercent, episode } }`;
-`HomeHero { content, reason, match? }`; `HomeFeed { profileId, hero, rows, generatedAt }`.
+### Reason strings (`REASONS`)
 
-The pipeline concept, formulas, worked example and row catalogue are in [section 6](#6-deep-dive-the-recommendation-pipeline).
-Per-function contracts follow.
+`REASONS` is a private const in the file. It holds every row reason string, so `buildHomeRows` and the stub share one source.
 
-### 5.1 `getHomeFeed(profile: Profile): Promise<HomeFeed>`: the orchestrator
+- `continueWatching`: `Pick up where you left off.`
+- `topPicks`: `Ranked from the genres and people you watch, what similar viewers enjoyed, and what's popular.`
+- `topPicksPickedGenres`: `Popular in the genres you picked — rate a few to personalise this row.`
+- `topPicksNoSignals`: `Popular titles to get you started — rate a few to personalise this row.`
+- `becauseKnn(anchor)`: `Viewers who enjoyed ${anchor} also watched these.`
+- `becauseSimilar(anchor)`: `Shares genres and people with ${anchor}.`
+- `trending`: `The most-watched titles on Reelhouse right now.`
+- `topRatedStrongest(genre)`: `${genre} is your strongest genre — sorted by audience rating.`
+- `topRatedPicked(genre)`: `You picked ${genre} during setup — here are its best-reviewed titles.`
+- `morePerson(count, name, role)`: `You've enjoyed ${count} titles ${role === "DIRECTOR" ? "by" : "featuring"} ${name}.`
+- `genrePicked(genre)`: `You picked ${genre} during setup.`
+- `genreWatched(genre)`: `You watch a lot of ${genre}.`
+- `heroPick(name)`: `Our top pick for ${name} tonight`
+- `heroPopular`: `Popular on Reelhouse`
 
-The Home page for one profile (hero + shelves).
+The pipeline concept, formulas, worked example and row catalogue are in [section 6](#6-deep-dive-the-recommendation-pipeline). The per-function contracts follow.
 
-Steps:
+### 5.1 `getHomeFeed(profile: Profile): Promise<HomeFeed>`
 
-1. `shouldRefreshRecommendations(profileId)`. If **false**, serve the stored rows: read `recommendation`
-   (`rec_status <> 'DISMISSED'`) ordered by `relevance_score`, regroup by `row_type`, and run stage 4 again over them
-   (reasons and the because-you-liked row are computed per request). Skip to 7. (How to rebuild `ranked` from stored rows: section 9.2.)
+**What it does:** The orchestrator for the Home page of one profile (hero + shelves). It decides whether to rebuild the recommendations or serve the stored ones, runs the five stages, and returns the feed.
+
+**Steps:**
+
+1. Call `shouldRefreshRecommendations(profileId)`. If it is **false**, serve the stored rows: read `recommendation` (`rec_status <> 'DISMISSED'`) ordered by `relevance_score`, regroup by `row_type`, and run stage 4 again over them. Reasons and the because-you-liked row are computed per request. Then skip to step 7. (How to rebuild `ranked` from stored rows: section 9.2.)
 2. `computeInteractionScores(profileId)`: stage 1.
 3. `generateCandidates(profileId, scores)`: stage 2.
 4. `rankCandidates(candidates, profile)`: stage 3.
 5. `buildHomeRows(ranked, profile, scores)`: stage 4.
 6. `storeRecommendations(profileId, ranked, rows)`: stage 5.
-7. Return `{ profileId, hero, rows, generatedAt }` (`generatedAt` = the newest `recommendation.generated_at`, or `now()` right after a refresh).
+7. Return `{ profileId, hero, rows, generatedAt }`. `generatedAt` is the newest `recommendation.generated_at`, or `now()` right after a refresh.
+
+**SQL:**
 
 ```sql
 SELECT r.content_id, r.row_type, r.relevance_score, r.generated_at
@@ -423,28 +668,33 @@ SELECT r.content_id, r.row_type, r.relevance_score, r.generated_at
  ORDER BY r.relevance_score DESC;                       -- recommendation_rank_idx
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `recommendation` (+ everything the stages read). PK `(profile_id, content_id)`, `recommendation_rank_idx`                                                                                                                                                                                                                                                                                                                 |
-| Transaction / idempotent | no for the reads; `storeRecommendations` opens its own / yes (same activity -> same feed; only `generated_at` moves)                                                                                                                                                                                                                                                                                                      |
-| Edge cases               | a profile with no signals and no picked genres still gets the popularity-ranked fallback (cold start); a failed store must **not** fail the request: catch, `console.error`, still return the feed                                                                                                                                                                                                                        |
-| Throws                   | nothing of its own (the route has already 404'd an unknown profile)                                                                                                                                                                                                                                                                                                                                                       |
-| Called by                | `GET /api/profiles/:profileId/home` (and the Home page via `serverApi.getHome`)                                                                                                                                                                                                                                                                                                                                           |
-| Mock today               | no pipeline: fixed slices of the catalogue (18 each: top-picks 0, top-rated-genre 18, because-you-liked 36, trending 300, genre-picks 318), continue-watching from the profile's history filtered with `!isCompleted`, because-you-liked anchored on `history[0]` (only when the profile has history), `genres[0]`/`genres[1]` as the top-rated/genre-picks genres, hero = the first catalogue title, `generatedAt` = now |
+**Rules to respect:**
 
-### 5.2 `shouldRefreshRecommendations(profileId: number): Promise<boolean>`: the refresh policy
+- Tables and keys: `recommendation` (+ everything the stages read). PK `(profile_id, content_id)`, index `recommendation_rank_idx`.
+- Transaction: no for the reads. `storeRecommendations` opens its own.
+- Idempotent: yes. The same activity gives the same feed; only `generated_at` moves.
+- A profile with no signals and no picked genres still gets the popularity-ranked fallback (cold start).
+- A failed store must **not** fail the request: catch the error, `console.error` it, and still return the feed.
 
-Should Home rerun the pipeline, or serve the stored recommendations? **Open decision** (README 9.1); recommended
-default chosen in the service and implemented as: regenerate on Home load when the newest `generated_at` is older than
-**15 minutes** OR older than the profile's latest activity. That keeps Home fresh right after a rating/watch/My List
-change without recomputing on every request or on every 10-second progress ping, and needs no background worker.
-`content_similarity` is refreshed separately and nightly.
+**Errors:** None of its own. The route has already 404'd an unknown profile.
 
-Steps:
+**Mock today:** There is no pipeline. It returns fixed slices of the catalogue (18 each: top-picks 0, top-rated-genre 18, because-you-liked 36, trending 300, genre-picks 318). Continue-watching comes from the profile's history filtered with `!isCompleted`. Because-you-liked is anchored on `history[0]` (only when the profile has history). `genres[0]`/`genres[1]` are the top-rated/genre-picks genres. The hero is the first catalogue title and `generatedAt` is now.
 
-1. Newest `generated_at` for the profile; none stored -> `true`.
-2. Latest activity time = `greatest(max(watch_history.watched_at), max(rating.rated_at), max(my_list.added_at), profile.onboarded_at)`.
-3. `true` when `now() - generated_at > 15 minutes` or `generated_at < latest activity`.
+**Used by:** `GET /api/profiles/:profileId/home` (and the Home page via `serverApi.getHome`).
+
+### 5.2 `shouldRefreshRecommendations(profileId: number): Promise<boolean>`
+
+**What it does:** Answers one question: should Home rerun the pipeline, or serve the stored recommendations? This is an **open decision** (README 9.1). The recommended default is chosen in the service and implemented as: regenerate on Home load when the newest `generated_at` is older than **15 minutes**, OR older than the profile's latest activity.
+
+That default keeps Home fresh right after a rating/watch/My List change. It avoids recomputing on every request or on every 10-second progress ping, and it needs no background worker. `content_similarity` is refreshed separately and nightly.
+
+**Steps:**
+
+1. Get the newest `generated_at` for the profile. If none is stored, return `true`.
+2. Compute the latest activity time: `greatest(max(watch_history.watched_at), max(rating.rated_at), max(my_list.added_at), profile.onboarded_at)`.
+3. Return `true` when `now() - generated_at > 15 minutes`, or `generated_at < latest activity`.
+
+**SQL:**
 
 ```sql
 SELECT (SELECT max(generated_at) FROM recommendation WHERE profile_id = $1) AS generated_at,
@@ -456,21 +706,36 @@ SELECT (SELECT max(generated_at) FROM recommendation WHERE profile_id = $1) AS g
        ) AS latest_activity;
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tables / keys            | `recommendation`, `watch_history`, `rating`, `my_list`, `profile`. `recommendation_rank_idx` / PK, `watch_history_recent_idx`, `rating` and `my_list` PKs                                                                                                                                                                                                                                                                                                    |
-| Transaction / idempotent | no / yes (read)                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Edge cases               | removing history/rating/My List rows lowers `max(...)` and does not trigger a refresh by itself: the 15-minute limit catches it. Progress pings on an unfinished title move `watched_at` every 10 seconds, so a profile mid-binge reruns the pipeline on each Home load; if that proves too costly, drop the "older than latest activity" rule for `watch_history` and keep it for ratings/My List/onboarding only. `greatest()` ignores NULLs in PostgreSQL |
-| Throws                   | nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Called by                | `getHomeFeed`                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Mock today               | returns `false` (there is nothing stored)                                                                                                                                                                                                                                                                                                                                                                                                                    |
+Evaluate the decision in TypeScript:
 
-Evaluate in TS: `!generatedAt || Date.now() - generatedAt.getTime() > 15 * 60_000 || (latestActivity && generatedAt < latestActivity)`.
+```ts
+!generatedAt || Date.now() - generatedAt.getTime() > 15 * 60_000 || (latestActivity && generatedAt < latestActivity);
+```
+
+**Rules to respect:**
+
+- Tables and keys: `recommendation`, `watch_history`, `rating`, `my_list`, `profile`. Uses `recommendation_rank_idx` / PK, `watch_history_recent_idx`, and the `rating` and `my_list` PKs.
+- Transaction: no. Idempotent: yes (a read).
+- Removing history/rating/My List rows lowers `max(...)` and does not trigger a refresh by itself. The 15-minute limit catches it.
+- Progress pings on an unfinished title move `watched_at` every 10 seconds, so a profile mid-binge reruns the pipeline on each Home load. If that proves too costly, drop the "older than latest activity" rule for `watch_history` and keep it for ratings/My List/onboarding only.
+- `greatest()` ignores NULLs in PostgreSQL.
+
+**Errors:** None.
+
+**Mock today:** Returns `false` (there is nothing stored).
+
+**Used by:** `getHomeFeed`.
 
 ### 5.3 `computeInteractionScores(profileId: number): Promise<InteractionScores>`: stage 1
 
-One interaction score per title this profile touched. Read the `interaction_score` view for the profile (weights in
-`WEIGHTS`; the view was created by migration 0001 and already encodes them).
+**What it does:** Produces one interaction score per title this profile touched. It reads the `interaction_score` view for the profile. The weights live in `WEIGHTS`, and the view (created by migration 0001) already encodes them.
+
+**Steps:**
+
+1. Select `content_id, score` from `interaction_score` for the profile.
+2. Return `Map<contentId, Number(score)>`. The view's `score` is numeric, which arrives as a string unless typed `real`, hence `Number()`.
+
+**SQL:**
 
 ```sql
 SELECT content_id, score FROM interaction_score WHERE profile_id = $1;
@@ -487,26 +752,32 @@ SELECT content_id, score FROM interaction_score WHERE profile_id = $1;
 --   ) AS signals GROUP BY profile_id, content_id;
 ```
 
-Return `Map<contentId, Number(score)>` (the view's `score` is numeric -> string unless typed `real`). Onboarding genres are not title signals
-(they enter in stage 2a). Edge cases: a new profile -> empty map (cold start). The kNN step needs every other profile's
-scores too: that is the same view without the profile filter, consumed by `content_similarity`. Tables `interaction_score` (view over
-`rating`, `watch_history`, `my_list`); indexes `rating_content_idx`, `watch_history_recent_idx`, PKs of `rating` and `my_list`.
-Called by `getHomeFeed`. Mock today: returns an empty map (`getHomeFeed` does not call it).
+**Rules to respect:**
+
+- Tables and keys: `interaction_score` (a view over `rating`, `watch_history`, `my_list`); indexes `rating_content_idx`, `watch_history_recent_idx`; PKs of `rating` and `my_list`.
+- Onboarding genres are not title signals. They enter in stage 2a.
+- A new profile gives an empty map (cold start).
+- The kNN step needs every other profile's scores too. That is the same view without the profile filter, consumed by `content_similarity`.
+
+**Errors:** None.
+
+**Mock today:** Returns an empty map (`getHomeFeed` does not call it).
+
+**Used by:** `getHomeFeed`.
 
 ### 5.4 `generateCandidates(profileId: number, scores: InteractionScores): Promise<Candidate[]>`: stage 2
 
-For each candidate title its four 0-1 parts. Every part is normalised to 0-1 by dividing by its max; negatives clamp to 0.
+**What it does:** For each candidate title, computes four parts, each from 0 to 1. Every part is normalised to 0-1 by dividing by its max over the candidates, and negatives clamp to 0.
 
-- **a. Genre affinity.** Spread each scored title's score over its genres (`score / #genres`), add +2 per genre in
-  `profile_genre_preference`, sum per genre; a candidate's `genreAffinity` = `(max + mean)` of its genres' affinities `/ 2`.
-- **b. People affinity.** The same spread over the title's `content_credit` rows: top-5 billed actors (`credit_order < 5`:
-  x1 for the first three, x0.6 after) and directors (x1.5); a candidate's `peopleAffinity` = its strongest shared person +
-  0.25 x the next two, capped at 1.
-- **c. Item kNN.** For every candidate, the similarity-weighted average over the titles this profile scored positively,
-  using `content_similarity` (refreshed on a schedule, not per request).
-- **d. Popularity prior.** `ln(1 + distinct viewers in the last 30 days)`, min-max normalised over the catalogue (0 for a title nobody watched).
-- **Cold start** (`scores` empty): the candidates are the titles in the picked genres with `genreAffinity` from the picks only,
-  `peopleAffinity = itemKnn = 0`, so the prior orders them; with no picks either, every title.
+**Steps:**
+
+1. **Genre affinity.** Spread each scored title's score over its genres (`score / #genres`). Add +2 per genre in `profile_genre_preference`. Sum per genre. A candidate's `genreAffinity` is `(max + mean)` of its genres' affinities, divided by 2.
+2. **People affinity.** Do the same spread over the title's `content_credit` rows. Count the top-5 billed actors (`credit_order < 5`: x1 for the first three, x0.6 after) and directors (x1.5). A candidate's `peopleAffinity` is its strongest shared person plus 0.25 x the next two, capped at 1.
+3. **Item kNN.** For every candidate, take the similarity-weighted average over the titles this profile scored positively, using `content_similarity`. That view is refreshed on a schedule, not per request.
+4. **Popularity prior.** `ln(1 + distinct viewers in the last 30 days)`, min-max normalised over the catalogue (0 for a title nobody watched). Min-max normalising means rescaling so the lowest value becomes 0 and the highest becomes 1.
+5. **Cold start** (`scores` is empty): the candidates are the titles in the picked genres, with `genreAffinity` from the picks only and `peopleAffinity = itemKnn = 0`. So the prior orders them. With no picks either, every title is a candidate.
+
+**SQL:**
 
 ```sql
 -- a. genre affinity (then divide by max, in the app)
@@ -554,26 +825,37 @@ SELECT content_id,
   FROM viewers;
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `interaction_score`, `content_genre`, `profile_genre_preference`, `content_credit`, `content_similarity`, `watch_history`, `content`. `content_genre_genre_idx`, `content_credit_person_idx`, `content_similarity_pair_key`, `watch_history_recent_idx`                                                                                                                                                                                                                                                                                   |
-| Transaction / idempotent | no / yes (read)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Edge cases               | a title in no genre gets `genreAffinity` 0; fewer than three credits is fine (the "next two" are simply missing); an empty `content_similarity` (not refreshed yet) gives `itemKnn` 0 everywhere and the blend degrades gracefully; the genre/person tables are also what `buildHomeRows` reads for "strongest genre/person": return or recompute them as needed (section 9.1). Recommended: also clamp negative `cs.score` out of the kNN query (`AND cs.score > 0`) so a negative similarity cannot flip the sign of a weighted average |
-| Throws                   | nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Called by                | `getHomeFeed`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Mock today               | returns an empty array (`getHomeFeed` does not call it)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+**Rules to respect:**
+
+- Tables and keys: `interaction_score`, `content_genre`, `profile_genre_preference`, `content_credit`, `content_similarity`, `watch_history`, `content`. Indexes and keys: `content_genre_genre_idx`, `content_credit_person_idx`, `content_similarity_pair_key`, `watch_history_recent_idx`.
+- Transaction: no. Idempotent: yes (a read).
+- A title in no genre gets `genreAffinity` 0.
+- Fewer than three credits is fine. The "next two" are simply missing.
+- An empty `content_similarity` (not refreshed yet) gives `itemKnn` 0 everywhere, and the blend degrades gracefully.
+- The genre and person tables are also what `buildHomeRows` reads for "strongest genre/person". Return or recompute them as needed (section 9.1).
+- Recommended: also clamp negative `cs.score` out of the kNN query (`AND cs.score > 0`), so a negative similarity cannot flip the sign of a weighted average.
+
+**Errors:** None.
+
+**Mock today:** Returns an empty array (`getHomeFeed` does not call it).
+
+**Used by:** `getHomeFeed`.
 
 ### 5.5 `rankCandidates(candidates: Candidate[], profile: Profile): Promise<RankedCandidate[]>`: stage 3
 
-Blend the four parts into one score, filter, sort.
+**What it does:** Blends the four parts into one score, filters out titles that should not be shown, and sorts.
 
-Steps:
+**Steps:**
 
-1. `affinity = 0.6 x genreAffinity + 0.4 x peopleAffinity`; `score = 0.5 x affinity + 0.3 x itemKnn + 0.2 x popularityPrior` (`WEIGHTS.blend`).
-2. Filter: `maturity_of(content.age_rating) <= profile.maturityLevel` (KIDS < TEEN < ADULT); drop finished titles (a completed
-   movie, or a series whose every episode has progress >= 90); drop titles with `recommendation.rec_status = 'DISMISSED'` (feedback loop).
+1. Blend: `affinity = 0.6 x genreAffinity + 0.4 x peopleAffinity`; then `score = 0.5 x affinity + 0.3 x itemKnn + 0.2 x popularityPrior` (`WEIGHTS.blend`).
+2. Filter:
+   - `maturity_of(content.age_rating) <= profile.maturityLevel` (KIDS < TEEN < ADULT).
+   - Drop finished titles: a completed movie, or a series whose every episode has progress >= 90.
+   - Drop titles with `recommendation.rec_status = 'DISMISSED'` (the feedback loop).
 3. Sort by `score DESC`, ties by `content.release_date DESC`.
-4. `match = round(55 + 44 x min(1, score / best score))`; a best score of 0 -> 55.
+4. Compute `match = round(55 + 44 x min(1, score / best score))`. A best score of 0 gives 55.
+
+**SQL:**
 
 ```sql
 -- the filters, applied to the candidate ids
@@ -597,30 +879,42 @@ SELECT c.content_id, c.release_date
                     WHERE r.profile_id = $1 AND r.content_id = c.content_id AND r.rec_status = 'DISMISSED');
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                  |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `content`, `watch_history`, `season`, `episode`, `recommendation`. `maturity_of()`, PK `(profile_id, content_id)` on `recommendation`                                                                                                                                                                                            |
-| Transaction / idempotent | no / yes (pure over its inputs plus reads)                                                                                                                                                                                                                                                                                       |
-| Edge cases               | the scoring is arithmetic in the app; only the filters need the database. Empty input -> `[]`. Candidates the profile has already watched or rated are **kept** here (top-picks drops them in stage 4; the person/genre rows reuse the ranking). Fill `RankedCandidate.content` (`ContentSummary` with genres) for the survivors |
-| Throws                   | nothing                                                                                                                                                                                                                                                                                                                          |
-| Called by                | `getHomeFeed`                                                                                                                                                                                                                                                                                                                    |
-| Mock today               | returns an empty array                                                                                                                                                                                                                                                                                                           |
+**Rules to respect:**
+
+- Tables and keys: `content`, `watch_history`, `season`, `episode`, `recommendation`; `maturity_of()`; PK `(profile_id, content_id)` on `recommendation`.
+- Transaction: no. Idempotent: yes (pure over its inputs plus reads).
+- The scoring is arithmetic in the app. Only the filters need the database.
+- Empty input gives `[]`.
+- Candidates the profile has already watched or rated are **kept** here. Top-picks drops them in stage 4, and the person/genre rows reuse the ranking.
+- Fill `RankedCandidate.content` (a `ContentSummary` with genres) for the survivors.
+
+**Errors:** None.
+
+**Mock today:** Returns an empty array.
+
+**Used by:** `getHomeFeed`.
 
 ### 5.6 `buildHomeRows(ranked, profile, scores): Promise<HomeBuild>`: stage 4
 
-Slices the ranking into shelves, each with its reason, and picks the hero. Rows in this order; a row with no
-items is omitted; 18 items per row (`ROW_SIZE`):
+**What it does:** Slices the ranking into shelves, gives each shelf its reason, and picks the hero. A row with no items is omitted. Each row has 18 items (`ROW_SIZE`). `scores` is the stage-1 map (anchors need score >= 3).
 
-1. `continue-watching`: latest `watch_history` row per title with 1-89% progress, newest first; items carry `{ progressPercent, episode (+ seasonNumber) }`. Title `Continue watching for <name>`.
-2. `top-picks`: ranked candidates the profile has not watched or rated, each with its `match`. Title `Top picks for <name>`. Cold start: picked genres' titles (or every title) by popularity prior, with the cold-start reasons.
-3. `because-you-liked`: for the 2 strongest anchors (interaction score >= 3, most recent first), unseen titles ordered by `0.65 x kNN similarity + 0.35 x content similarity` (genre/people overlap, as in `/api/content/:id/similar`). Title `Because you liked <anchor>`, `row.anchor = { contentId, title }`; id `because-you-liked-<anchor contentId>` so the two rows have distinct ids. Reason "Viewers who enjoyed X also watched these." when most items came from kNN, else "Shares genres and people with X.".
-4. `trending`: most distinct viewers in the last 7 days, then `release_date DESC`; the same for everyone at this maturity level. Title `Trending now`.
-5. `top-rated-genre`: the strongest genre, ordered by the Bayesian average. Title `Top rated in <Genre>`.
-6. `more-with-person`: the strongest person with >= 3 titles of which >= 2 are unseen. Title `From <director>` / `More with <actor>`.
+**Steps:** build the rows in this order.
+
+1. `continue-watching`: the latest `watch_history` row per title with 1-89% progress, newest first. Items carry `{ progressPercent, episode (+ seasonNumber) }`. Title `Continue watching for <name>`.
+2. `top-picks`: ranked candidates the profile has not watched or rated, each with its `match`. Title `Top picks for <name>`. Cold start: the picked genres' titles (or every title) by popularity prior, with the cold-start reasons.
+3. `because-you-liked`: for the 2 strongest anchors (interaction score >= 3, most recent first), unseen titles ordered by `0.65 x kNN similarity + 0.35 x content similarity`. Content similarity means genre/people overlap, as in `/api/content/:id/similar`.
+   - Title `Because you liked <anchor>`, with `row.anchor = { contentId, title }`.
+   - The id is `because-you-liked-<anchor contentId>`, so the two rows have distinct ids.
+   - Reason: "Viewers who enjoyed X also watched these." when most items came from kNN, else "Shares genres and people with X.".
+4. `trending`: most distinct viewers in the last 7 days, then `release_date DESC`. It is the same for everyone at this maturity level. Title `Trending now`.
+5. `top-rated-genre`: the strongest genre, ordered by the Bayesian average (a rating average that is pulled toward the global mean when a title has few ratings). Title `Top rated in <Genre>`.
+6. `more-with-person`: the strongest person with >= 3 titles, of which >= 2 are unseen. Title `From <director>` / `More with <actor>`.
 7. `genre-picks`: the 2nd and 3rd strongest genres, ranked by score (one row each, id `genre-picks-<genreId>`). Title `<Genre> for you`.
-8. `hero`: the first top pick, reason `Our top pick for <name> tonight`, or `Popular on Reelhouse` when the profile has no signals yet; `hero.match` = that pick's match.
+8. `hero`: the first top pick, with reason `Our top pick for <name> tonight`, or `Popular on Reelhouse` when the profile has no signals yet. `hero.match` is that pick's match.
 
-Reasons are computed here from the row kind plus context (genre name, person name, anchor title), see `REASONS`; there is no `recommendation.reason` column, so they cannot go stale.
+Reasons are computed here from the row kind plus context (genre name, person name, anchor title). See `REASONS`. There is no `recommendation.reason` column, so reasons cannot go stale.
+
+**SQL:**
 
 ```sql
 -- continue-watching
@@ -654,28 +948,39 @@ SELECT content_b AS content_id, score FROM content_similarity
  WHERE content_a = $a ORDER BY score DESC;
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `watch_history`, `rating`, `content`, `content_genre`, `genre`, `content_credit`, `person`, `content_similarity`, `interaction_score`. `watch_history_recent_idx`, `rating_content_idx`, `content_similarity_pair_key`, `maturity_of()`                                                                                                                                                                                                                                                                                                                    |
-| Transaction / idempotent | no / yes (read)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Edge cases               | "unseen" = no `watch_history` row and no rating for the profile; rows with no items are dropped (a new profile has no continue-watching or because-you-liked); "strongest" genre/person = highest stage-2 affinity; with only onboarding picks the top-rated reason is the "You picked ..." one and genre-picks says "You picked <Genre> during setup.", otherwise "You watch a lot of <Genre>."; `scores` is the stage-1 map (anchors need score >= 3). Seed-sized data has only 7 ratings, so use the LEFT JOIN form of the Bayesian query (section 9.3) |
-| Throws                   | nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Called by                | `getHomeFeed`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Mock today               | returns `{ hero: null, rows: [] }` (`getHomeFeed` builds its fixed slices itself)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+**Rules to respect:**
+
+- Tables and keys: `watch_history`, `rating`, `content`, `content_genre`, `genre`, `content_credit`, `person`, `content_similarity`, `interaction_score`. Indexes and helpers: `watch_history_recent_idx`, `rating_content_idx`, `content_similarity_pair_key`, `maturity_of()`.
+- Transaction: no. Idempotent: yes (a read).
+- "Unseen" means no `watch_history` row and no rating for the profile.
+- Rows with no items are dropped. A new profile has no continue-watching or because-you-liked.
+- "Strongest" genre/person means the highest stage-2 affinity.
+- With only onboarding picks, the top-rated reason is the "You picked ..." one and genre-picks says "You picked <Genre> during setup.". Otherwise it says "You watch a lot of <Genre>.".
+- Seed-sized data has only 7 ratings, so use the LEFT JOIN form of the Bayesian query (section 9.3).
+
+**Errors:** None.
+
+**Mock today:** Returns `{ hero: null, rows: [] }` (`getHomeFeed` builds its fixed slices itself).
+
+**Used by:** `getHomeFeed`.
 
 ### 5.7 `storeRecommendations(profileId, ranked, rows): Promise<void>`: stage 5
 
-Persist the ranked picks in `recommendation` and drop the stale ones.
+**What it does:** Saves the ranked picks in `recommendation` and drops the stale ones.
 
-What is stored: the titles shown in the personalised shelves (`top-picks`, `more-with-person`, `top-rated-genre`,
-`genre-picks`). `continue-watching`, `trending` and `because-you-liked` are **not** stored (the last is rebuilt
-from `content_similarity` per request, anchor included). A title in several shelves is stored once, under the first of
-them in row order. `relevance_score` = the candidate's blended score (store only titles present in `ranked`).
+What is stored:
 
-Steps (**one transaction**):
+- The titles shown in the personalised shelves: `top-picks`, `more-with-person`, `top-rated-genre`, `genre-picks`.
+- **Not stored:** `continue-watching`, `trending` and `because-you-liked`. The last one is rebuilt from `content_similarity` per request, anchor included.
+- A title in several shelves is stored once, under the first of them in row order.
+- `relevance_score` is the candidate's blended score. Store only titles present in `ranked`.
 
-1. Upsert each picked title: `row_type`, `relevance_score`, `generated_at = now()`. `rec_status` is **not** in the DO UPDATE list, so it survives a refresh: DISMISSED stays DISMISSED (stage 3 keeps it out), CLICKED/WATCHED keep their history. Policy choice: a title re-ranked after the profile ignored it stays SHOWN; if the team wants "re-shown" to reset CLICKED -> SHOWN, add `rec_status = CASE WHEN recommendation.rec_status = 'CLICKED' THEN 'SHOWN' ELSE recommendation.rec_status END`.
+**Steps** (all in **one transaction**):
+
+1. Upsert each picked title: `row_type`, `relevance_score`, `generated_at = now()`. `rec_status` is **not** in the DO UPDATE list, so it survives a refresh. DISMISSED stays DISMISSED (stage 3 keeps it out), and CLICKED/WATCHED keep their history.
 2. Delete the rows this refresh no longer ranks (not DISMISSED, which must persist).
+
+**SQL:**
 
 ```sql
 INSERT INTO recommendation (profile_id, content_id, row_type, relevance_score, generated_at)
@@ -688,64 +993,98 @@ DELETE FROM recommendation
  WHERE profile_id = $1 AND generated_at < $refreshStartedAt AND rec_status <> 'DISMISSED';
 ```
 
-|                          |                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tables / keys            | `recommendation`. PK `(profile_id, content_id)`, `recommendation_rank_idx`, FKs to `profile` and `content` (ON DELETE CASCADE)                                                                                                                                                                                                                                                                                |
-| Transaction / idempotent | yes (`db.transaction`) / yes (ON CONFLICT upsert; reruns only move `generated_at`)                                                                                                                                                                                                                                                                                                                            |
-| Edge cases               | empty `ranked` and `rows` -> only the delete runs (a profile whose picks all vanished); no `reason` / `source_content_id` columns exist (computed); `$refreshStartedAt` can simply be `now()`: inside one transaction `now()` is constant, every row upserted by this refresh has `generated_at = now()`, and every untouched row is strictly older, so `generated_at < now()` selects exactly the stale rows |
-| Throws                   | nothing of its own                                                                                                                                                                                                                                                                                                                                                                                            |
-| Called by                | `getHomeFeed`                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Mock today               | does nothing                                                                                                                                                                                                                                                                                                                                                                                                  |
+Batch the VALUES (a few hundred rows is fine in one statement), or use Drizzle:
 
-Batch the VALUES (a few hundred rows is fine in one statement), or use `db.insert(recommendation).values(rows).onConflictDoUpdate({ target: [profileId, contentId], set: { rowType: sql.raw("excluded.row_type"), relevanceScore: sql.raw("excluded.relevance_score"), generatedAt: sql`now()` } })`.
+```ts
+db.insert(recommendation)
+  .values(rows)
+  .onConflictDoUpdate({
+    target: [profileId, contentId],
+    set: {
+      rowType: sql.raw("excluded.row_type"),
+      relevanceScore: sql.raw("excluded.relevance_score"),
+      generatedAt: sql`now()`,
+    },
+  });
+```
+
+**Rules to respect:**
+
+- Tables and keys: `recommendation`. PK `(profile_id, content_id)`, index `recommendation_rank_idx`, FKs to `profile` and `content` (ON DELETE CASCADE, meaning the row is deleted automatically when its profile or title is deleted).
+- Transaction: yes (`db.transaction`). Idempotent: yes (ON CONFLICT upsert; reruns only move `generated_at`).
+- Policy choice: a title re-ranked after the profile ignored it stays SHOWN. If the team wants "re-shown" to reset CLICKED -> SHOWN, add `rec_status = CASE WHEN recommendation.rec_status = 'CLICKED' THEN 'SHOWN' ELSE recommendation.rec_status END`.
+- Empty `ranked` and `rows` -> only the delete runs (a profile whose picks all vanished).
+- No `reason` / `source_content_id` columns exist; those are computed.
+- `$refreshStartedAt` can simply be `now()`. Inside one transaction `now()` is constant, so every row upserted by this refresh has `generated_at = now()` and every untouched row is strictly older. That means `generated_at < now()` selects exactly the stale rows.
+
+**Errors:** None of its own.
+
+**Mock today:** Does nothing.
+
+**Used by:** `getHomeFeed`.
 
 ### 5.8 `refreshContentSimilarity(): Promise<void>`
 
-Refreshes `content_similarity` (the item-item kNN). Run nightly by a scheduled job, **not** per request.
+**What it does:** Refreshes `content_similarity` (the item-item kNN). Run it nightly by a scheduled job, **not** per request.
+
+**Steps:**
+
+1. Run the refresh statement. Readers keep using the old data meanwhile.
+
+**SQL:**
 
 ```sql
 REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity;
 ```
 
-Readers keep using the old data meanwhile (needs the unique index `content_similarity_pair_key`, which migration 0001 created). Not a transaction
-(the statement is atomic but cannot run inside a transaction block): call ``db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity`)``
-directly (or `db.refreshMaterializedView(contentSimilarity).concurrently()`). Idempotent. A first-ever refresh with CONCURRENTLY needs the view populated
-once without it (`REFRESH MATERIALIZED VIEW content_similarity;`); the seed already did that. Called by: nothing yet: the
-nightly job (section 7.2). Mock today: does nothing.
+**Rules to respect:**
+
+- `CONCURRENTLY` needs the unique index `content_similarity_pair_key`, which migration 0001 created.
+- Not a transaction. The statement is atomic but cannot run inside a transaction block. Call ``db.execute(sql`REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity`)`` directly (or `db.refreshMaterializedView(contentSimilarity).concurrently()`).
+- Idempotent.
+- A first-ever refresh with CONCURRENTLY needs the view populated once without it (`REFRESH MATERIALIZED VIEW content_similarity;`). The seed already did that.
+
+**Errors:** None.
+
+**Mock today:** Does nothing.
+
+**Used by:** Nothing yet. The nightly job (section 7.2) will call it.
 
 ---
 
 ## 6. Deep dive: the recommendation pipeline
 
-Four stages, each a query (or view) over the activity tables, so they can be built and checked one at a time, plus a
-fifth that stores the result. Weights live in one const object (`WEIGHTS`).
+The pipeline turns "what this profile did" into "what to show on Home". It has four stages, each a query (or view) over the activity tables, so you can build and check them one at a time. A fifth stage stores the result. The weights live in one const object (`WEIGHTS`).
 
+```mermaid
+flowchart TD
+  S1["1. Signals: interaction_score view"] --> S2["2. Candidates: four 0-1 parts"]
+  S2 --> S3["3. Ranking: blend, filters, match %"]
+  S3 --> S4["4. Shelves: rows, hero, reasons"]
+  S4 --> S5["5. Store: recommendation table"]
 ```
-interaction_score (view)        stage 1  signals            rating, watch_history, my_list  ->  score per (profile, title)
-        │
-        ▼
-candidates                      stage 2  four 0-1 parts     genre affinity, people affinity, item kNN, popularity prior
-        │
-        ▼
-ranking                         stage 3  blend + filters    score = 0.5·affinity + 0.3·kNN + 0.2·prior ; match %
-        │
-        ▼
-rows + hero + reasons           stage 4  shelves            computed per request, never stored
-        │
-        ▼
-recommendation (table)          stage 5  store              personalised shelves only; rec_status feedback loop
-```
+
+Walkthrough:
+
+1. **Signals.** Ratings, watch progress and My List turn into one score per (profile, title).
+2. **Candidates.** Every title gets four parts between 0 and 1: genre affinity, people affinity, item kNN and popularity prior.
+3. **Ranking.** The parts blend into one score: `score = 0.5·affinity + 0.3·kNN + 0.2·prior`. Filters remove unsuitable titles, and the score becomes a "match %".
+4. **Shelves.** The ranking is sliced into rows with reasons and a hero. This is computed per request and never stored.
+5. **Store.** Only the personalised shelves are saved in `recommendation`, and `rec_status` records what the profile did with them.
 
 ### 6.1 Stage 1: signals and weights
 
-One interaction score per (profile, content), summed over three sources (`WEIGHTS`):
+Stage 1 gives each (profile, content) pair one interaction score, summed over three sources (`WEIGHTS`).
 
-| Source                     | Rule                                                                                    | Weight                                                                                                          |
-| -------------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `rating`                   | `(stars - 3) x 2`                                                                       | 5 stars +4, 4 stars +2, 3 stars 0, 2 stars -2, 1 star -4 (`WEIGHTS.rating = { centre: 3, scale: 2 }`)           |
-| `watch_history`            | aggregate **per title first** (a series has a row per episode): `max(progress_percent)` | `>= 90` completed **+3**; else `>= 50` **+1.5**; else `< 10` (abandoned) **-0.5**; 10-49 -> 0 (`WEIGHTS.watch`) |
-| `my_list`                  | in the list                                                                             | **+1** (`WEIGHTS.myList`)                                                                                       |
-| `profile_genre_preference` | **not** a title signal; enters stage 2a as +2 per picked genre (`WEIGHTS.genrePick`)    |                                                                                                                 |
+- **`rating`:** `(stars - 3) x 2` (`WEIGHTS.rating = { centre: 3, scale: 2 }`).
+  - 5 stars +4, 4 stars +2, 3 stars 0, 2 stars -2, 1 star -4.
+- **`watch_history`** (`WEIGHTS.watch`): aggregate **per title first**, because a series has a row per episode. Use `max(progress_percent)`.
+  - `>= 90` completed: **+3**.
+  - Else `>= 50`: **+1.5**.
+  - Else `< 10` (abandoned): **-0.5**.
+  - 10-49: 0.
+- **`my_list`:** being in the list is **+1** (`WEIGHTS.myList`).
+- **`profile_genre_preference`:** **not** a title signal. It enters stage 2a as +2 per picked genre (`WEIGHTS.genrePick`).
 
 The view (migration 0001), verbatim:
 
@@ -768,26 +1107,58 @@ FROM (
 GROUP BY profile_id, content_id;
 ```
 
-The weights are hard-coded in the view **and** in `WEIGHTS`: if you retune, change both (a migration for the view).
-It is always fresh (a plain view), so ratings and watches show up immediately in stage 1.
+The weights are hard-coded in the view **and** in `WEIGHTS`. If you retune, change both (the view needs a migration). The view is always fresh (a plain view), so ratings and watches show up immediately in stage 1.
 
 ### 6.2 Stage 2: candidates
 
-Every part is divided by its max over the candidates (0-1). Candidates: for a profile with signals, every title that has any
-non-zero part (in practice the whole 500-title catalogue is cheap to score); cold start: below.
+Stage 2 scores every candidate title on four things. Every part is divided by its max over the candidates, so it ends up between 0 and 1.
 
-**a. Genre affinity.** Spread each scored title's score evenly over its genres, add +2 per picked genre, sum per genre.
-Worked example: Riya (picks Drama) scored title A = 4 (genres Action, Sci-Fi) and B = 3 (Sci-Fi):
-Action 4/2 = 2, Sci-Fi 4/2 + 3/1 = 5, Drama 2 (pick) -> divide by the max 5: Action 0.4, Sci-Fi 1.0, Drama 0.4. A candidate in {Sci-Fi, Drama}:
-`genreAffinity = (max + mean) / 2 = (1.0 + 0.7) / 2 = 0.85`. Negative genre sums clamp to 0 before normalising.
+For a profile with signals, the candidates are every title that has any non-zero part. In practice the whole 500-title catalogue is cheap to score. For a cold start, see the end of this section.
 
-**b. People affinity.** The same spread over the title's counted credits (top-5 billed actors + directors), weighted by role/billing:
-director x1.5, actors with `credit_order < 3` x1, `3-4` x0.6. For a scored title (score 4) with credits {actor 0, actor 3, director}:
-`n = 3`; per person `4/3 x w`: actor 0 -> 1.33, actor 3 -> 0.80, director -> 2.00. Sum across all scored titles per person, divide by the max. A candidate's
-`peopleAffinity` = its strongest shared person + 0.25 x the next two, capped at 1.
+#### a. Genre affinity
 
-**c. Item-item kNN.** Treat each title as a vector of _every profile's_ stage-1 scores and take cosine similarity between titles,
-shrunk by `common / (common + 2)` where `common` = number of profiles who scored both (`content_similarity`, materialized):
+Idea: if you scored titles in a genre highly, you probably like that genre.
+
+How it works: spread each scored title's score evenly over its genres, add +2 per picked genre, and sum per genre.
+
+Worked example. Riya picks Drama. She scored title A = 4 (genres Action, Sci-Fi) and title B = 3 (genre Sci-Fi).
+
+- Action: 4/2 = 2.
+- Sci-Fi: 4/2 + 3/1 = 5.
+- Drama: 2 (from the pick).
+- Divide by the max (5): Action 0.4, Sci-Fi 1.0, Drama 0.4.
+- A candidate in {Sci-Fi, Drama} gets `genreAffinity = (max + mean) / 2 = (1.0 + 0.7) / 2 = 0.85`.
+
+Negative genre sums clamp to 0 before normalising.
+
+#### b. People affinity
+
+Idea: if you liked titles with the same actor or director, you probably like more of their work.
+
+How it works: the same spread over the title's counted credits (top-5 billed actors plus directors), weighted by role and billing.
+
+- Director: x1.5.
+- Actors with `credit_order < 3`: x1.
+- Actors with `credit_order` 3-4: x0.6.
+
+Worked example. A scored title (score 4) has credits {actor 0, actor 3, director}, so `n = 3`. For each person the share is `4/3 x w`:
+
+- actor 0 -> 1.33.
+- actor 3 -> 0.80.
+- director -> 2.00.
+
+Sum across all scored titles per person, then divide by the max. A candidate's `peopleAffinity` is its strongest shared person plus 0.25 x the next two, capped at 1.
+
+#### c. Item-item kNN (cosine similarity)
+
+Idea: two titles are similar if the same viewers rated or watched them in the same way. "kNN" (k nearest neighbours) here means: for a candidate, look at the titles you already scored that are most similar to it, and borrow your own scores for them.
+
+How similarity is measured:
+
+- Treat each title as a list of numbers: the stage-1 score from every profile that scored it.
+- **Cosine similarity** compares two such lists by the angle between them. It is 1 when they point the same way and near 0 when they have little in common. In formula form: `dot / (norm x norm)`, where `dot` multiplies the two titles' scores profile by profile and adds them up, and `norm` is `sqrt(sum of squares)`.
+- **Shrinkage** then scales it down when few profiles back it up: multiply by `common / (common + 2)`, where `common` is the number of profiles who scored both titles. One shared profile counts for a third; many shared profiles count for almost all.
+- The result is stored in the materialized view `content_similarity`:
 
 ```sql
 CREATE MATERIALIZED VIEW content_similarity AS
@@ -811,11 +1182,19 @@ WHERE na.norm > 0 AND nb.norm > 0;
 CREATE UNIQUE INDEX content_similarity_pair_key ON content_similarity (content_a, content_b);
 ```
 
-A candidate's kNN score for this profile = the similarity-weighted average of the profile's scores on titles it scored **positively**:
-`knn(candidate) = SUM(sim(scored, candidate) x score(scored)) / SUM(sim(scored, candidate))` (the SQL in 5.4c), then divided by the max over candidates.
+How a candidate's kNN score for one profile is computed: take the similarity-weighted average of the profile's scores on the titles it scored **positively**. This is the SQL in 5.4c.
 
-_Worked example._ Three profiles, three titles A, B, C. Stage-1 scores (how they arose: P1 rated A 5 stars (+4) and completed B (+3);
-P2 rated A 4 stars (+2), rated B 5 stars (+4), completed C (+3); P3 has B on My List (+1) and rated C 5 stars (+4) and listed it (+1)):
+`knn(candidate) = SUM(sim(scored, candidate) x score(scored)) / SUM(sim(scored, candidate))`
+
+Then divide by the max over candidates.
+
+**Worked example.** Three profiles (P1, P2, P3) and three titles (A, B, C). Here is how the stage-1 scores arose:
+
+- P1 rated A 5 stars (+4) and completed B (+3).
+- P2 rated A 4 stars (+2), rated B 5 stars (+4), and completed C (+3).
+- P3 has B on My List (+1), rated C 5 stars (+4), and listed it (+1), so C is 5.
+
+The resulting score table:
 
 |     | A      | B   | C      |
 | --- | ------ | --- | ------ |
@@ -823,15 +1202,29 @@ P2 rated A 4 stars (+2), rated B 5 stars (+4), completed C (+3); P3 has B on My 
 | P2  | 2      | 4   | 3      |
 | P3  | (none) | 1   | 5      |
 
-Norms (`sqrt(sum of squares)` over the profiles that scored the title): `|A| = sqrt(4² + 2²) = sqrt(20) = 4.4721`; `|B| = sqrt(3² + 4² + 1²) = sqrt(26) = 5.0990`; `|C| = sqrt(3² + 5²) = sqrt(34) = 5.8310`.
+Step 1, the norms (`sqrt(sum of squares)` over the profiles that scored the title):
 
-| Pair | Common profiles | `dot`          | cosine = dot / (norm x norm)                   | shrink `common/(common+2)` | similarity (`content_similarity.score`) |
-| ---- | --------------- | -------------- | ---------------------------------------------- | -------------------------- | --------------------------------------- |
-| A-B  | P1, P2 (2)      | 4x3 + 2x4 = 20 | 20 / (4.4721 x 5.0990) = 20 / 22.8035 = 0.8771 | 2/4 = 0.5                  | **0.4385**                              |
-| A-C  | P2 (1)          | 2x3 = 6        | 6 / (4.4721 x 5.8310) = 6 / 26.0768 = 0.2301   | 1/3 = 0.3333               | **0.0767**                              |
-| B-C  | P2, P3 (2)      | 4x3 + 1x5 = 17 | 17 / (5.0990 x 5.8310) = 17 / 29.7321 = 0.5718 | 2/4 = 0.5                  | **0.2859**                              |
+- `|A| = sqrt(4² + 2²) = sqrt(20) = 4.4721`.
+- `|B| = sqrt(3² + 4² + 1²) = sqrt(26) = 5.0990`.
+- `|C| = sqrt(3² + 5²) = sqrt(34) = 5.8310`.
 
-(The view stores both directions: `(A,B)` and `(B,A)` with the same score.) Now P1's candidate **C** (P1 scored A = 4 and B = 3, both positive):
+Step 2, the dot product and cosine for each pair:
+
+- **A-B** (common profiles P1, P2, so 2): `dot = 4x3 + 2x4 = 20`. Cosine = 20 / (4.4721 x 5.0990) = 20 / 22.8035 = 0.8771.
+- **A-C** (common profile P2 only, so 1): `dot = 2x3 = 6`. Cosine = 6 / (4.4721 x 5.8310) = 6 / 26.0768 = 0.2301.
+- **B-C** (common profiles P2, P3, so 2): `dot = 4x3 + 1x5 = 17`. Cosine = 17 / (5.0990 x 5.8310) = 17 / 29.7321 = 0.5718.
+
+Step 3, shrink by `common / (common + 2)` to get the stored similarity (`content_similarity.score`):
+
+| Pair | Cosine | Shrink       | Similarity |
+| ---- | ------ | ------------ | ---------- |
+| A-B  | 0.8771 | 2/4 = 0.5    | **0.4385** |
+| A-C  | 0.2301 | 1/3 = 0.3333 | **0.0767** |
+| B-C  | 0.5718 | 2/4 = 0.5    | **0.2859** |
+
+The view stores both directions: `(A,B)` and `(B,A)` have the same score.
+
+Step 4, predict for P1's candidate **C**. P1 scored A = 4 and B = 3, both positive, so both count:
 
 ```
 knn(C | P1) = (sim(A,C) x 4 + sim(B,C) x 3) / (sim(A,C) + sim(B,C))
@@ -840,122 +1233,201 @@ knn(C | P1) = (sim(A,C) x 4 + sim(B,C) x 3) / (sim(A,C) + sim(B,C))
             = 1.1645 / 0.3626 = 3.2115
 ```
 
-It is a score on the same scale as the inputs (a weighted average of 4 and 3, pulled towards B because B-C is more similar than A-C). It is
-then normalised: dividing by the largest raw kNN among all candidates. Here C is the only unseen candidate so `itemKnn(C) = 1.0`; suppose a
-second candidate D had raw kNN 1.6058, then `itemKnn(D) = 1.6058 / 3.2115 = 0.5`. (From P3's side: candidate A = (0.4385 x 1 + 0.0767 x 5) / (0.4385 + 0.0767) = 0.8220 / 0.5152 = 1.5954.)
-Note how the shrinkage matters: A-C is cosine 0.23 _and_ seen by one profile only, so it counts a third of its cosine.
+In plain words: the result is a weighted average of P1's own scores (4 and 3), so it stays on the same scale. It is pulled toward B's 3 because B-C is more similar than A-C.
 
-**d. Popularity prior.** From our own viewing only: `ln(1 + distinct viewers over 30 days)`, min-max normalised over the catalogue. If nobody has
-watched anything in 30 days the prior is 0 everywhere (ties then break on `release_date DESC`).
+Step 5, normalise by dividing by the largest raw kNN among all candidates. Here C is the only unseen candidate, so `itemKnn(C) = 1.0`. Suppose a second candidate D had raw kNN 1.6058; then `itemKnn(D) = 1.6058 / 3.2115 = 0.5`.
 
-**Cold start.** A profile whose only signal is `profile_genre_preference` has no stage-1 rows, so people affinity and kNN are 0 and the
-candidates are the titles in its picked genres (+2 per genre -> genre affinity 1.0 for picked genres), ranked by the prior. A profile with
-neither signals nor picks: every title by prior. Ratings, watching and My List take over as they accumulate.
+From P3's side, candidate A = (0.4385 x 1 + 0.0767 x 5) / (0.4385 + 0.0767) = 0.8220 / 0.5152 = 1.5954.
+
+Why shrinkage matters: A-C has cosine 0.23 _and_ is seen by only one profile, so it counts a third of its cosine.
+
+#### d. Popularity prior
+
+Idea: when we know little about a profile, fall back on what everyone is watching.
+
+How it works: `ln(1 + distinct viewers over 30 days)` (the logarithm stops a few mega-hits from dominating), min-max normalised over the catalogue. It uses only our own viewing. If nobody has watched anything in 30 days, the prior is 0 everywhere, and ties then break on `release_date DESC`.
+
+#### Cold start
+
+A "cold start" is a profile with little or no history to learn from.
+
+- A profile whose only signal is `profile_genre_preference` has no stage-1 rows. So people affinity and kNN are 0, and the candidates are the titles in its picked genres (+2 per genre gives genre affinity 1.0 for picked genres), ranked by the prior.
+- A profile with neither signals nor picks gets every title, ranked by the prior.
+- Ratings, watching and My List take over as they accumulate.
 
 ### 6.3 Stage 3: ranking, filters, match %
+
+Stage 3 blends the four parts into one score and turns it into the "match %" chip.
 
 ```
 affinity = 0.6 x genre + 0.4 x people
 score    = 0.5 x affinity + 0.3 x kNN + 0.2 x popularityPrior          ties: release_date DESC
 ```
 
-Continuing the example: C has `genreAffinity 0.8`, `peopleAffinity 0.5`, `itemKnn 1.0`, `prior 0.4`:
-`affinity = 0.6 x 0.8 + 0.4 x 0.5 = 0.68`; `score = 0.5 x 0.68 + 0.3 x 1.0 + 0.2 x 0.4 = 0.34 + 0.30 + 0.08 = 0.72`.
-D has `0.5 / 0.2 / 0.5 / 0.3`: `affinity = 0.6 x 0.5 + 0.4 x 0.2 = 0.38`; `score = 0.19 + 0.15 + 0.06 = 0.40`.
-Best score = 0.72, so `match(C) = round(55 + 44 x min(1, 0.72/0.72)) = 99` and `match(D) = round(55 + 44 x 0.40/0.72) = round(55 + 24.44) = 79`
-(the "93% fit" chip; best score 0 -> 55).
+Continuing the example with two candidates:
 
-Filters: maturity (`maturity_of(age_rating) <= profile.maturity_level`), already finished (completed movie / series with every episode >= 90), DISMISSED. Sort by score DESC, then `release_date DESC`.
+| Candidate | genre | people | kNN | prior | affinity                 | score                         |
+| --------- | ----- | ------ | --- | ----- | ------------------------ | ----------------------------- |
+| C         | 0.8   | 0.5    | 1.0 | 0.4   | 0.6x0.8 + 0.4x0.5 = 0.68 | 0.34 + 0.30 + 0.08 = **0.72** |
+| D         | 0.5   | 0.2    | 0.5 | 0.3   | 0.6x0.5 + 0.4x0.2 = 0.38 | 0.19 + 0.15 + 0.06 = **0.40** |
+
+The best score is 0.72, so:
+
+- `match(C) = round(55 + 44 x min(1, 0.72/0.72)) = 99`.
+- `match(D) = round(55 + 44 x 0.40/0.72) = round(55 + 24.44) = 79`.
+- This is the "93% fit" chip. A best score of 0 gives 55.
+
+Filters:
+
+- Maturity: `maturity_of(age_rating) <= profile.maturity_level`.
+- Already finished: a completed movie, or a series with every episode >= 90.
+- DISMISSED titles.
+
+Sort by score DESC, then `release_date DESC`.
 
 ### 6.4 Stage 4: the rows, in order, with their reasons (computed, not stored)
 
-| #     | id                             | kind                             | Title                                   | Items                                                  | Reason                                                                                                                                                                                                                                                                               |
-| ----- | ------------------------------ | -------------------------------- | --------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | `continue-watching`            | `continue-watching`              | `Continue watching for <name>`          | latest row per title with 1-89% progress, newest first | `Pick up where you left off.`                                                                                                                                                                                                                                                        |
-| 2     | `top-picks`                    | `top-picks`                      | `Top picks for <name>`                  | ranked, not watched/rated, with `match`                | `Ranked from the genres and people you watch, what similar viewers enjoyed, and what's popular.`; cold start with picks `Popular in the genres you picked — rate a few to personalise this row.`; no picks `Popular titles to get you started — rate a few to personalise this row.` |
-| 3a/3b | `because-you-liked-<anchorId>` | `because-you-liked` (+ `anchor`) | `Because you liked <anchor>`            | unseen, by 0.65 x kNN + 0.35 x content similarity      | kNN-dominated `Viewers who enjoyed X also watched these.` else `Shares genres and people with X.`                                                                                                                                                                                    |
-| 4     | `trending`                     | `trending`                       | `Trending now`                          | most distinct viewers in 7 days, then release date     | `The most-watched titles on Reelhouse right now.`                                                                                                                                                                                                                                    |
-| 5     | `top-rated-genre`              | `top-rated-genre`                | `Top rated in <Genre>`                  | strongest genre by Bayesian average (m = 5)            | `<Genre> is your strongest genre — sorted by audience rating.` or (only picks) `You picked <Genre> during setup — here are its best-reviewed titles.`                                                                                                                                |
-| 6     | `more-with-person`             | `more-with-person`               | `From <director>` / `More with <actor>` | strongest person with >= 3 titles, >= 2 unseen         | `You've enjoyed N titles featuring/by <name>.`                                                                                                                                                                                                                                       |
-| 7a/7b | `genre-picks-<genreId>`        | `genre-picks`                    | `<Genre> for you`                       | 2nd and 3rd strongest genres by score                  | `You picked <Genre> during setup.` or `You watch a lot of <Genre>.`                                                                                                                                                                                                                  |
-| hero  |                                |                                  |                                         | the first top pick, `match`                            | `Our top pick for <name> tonight`, or `Popular on Reelhouse` with no signals                                                                                                                                                                                                         |
+This is the row catalogue. Every row has 18 items, empty rows are omitted, and reasons are computed per request.
 
-Rules: 18 items per row; empty rows are omitted; "unseen" = no history row and no rating; the because-you-liked anchors are the 2 titles with score >= 3
-and the most recent activity (`greatest(max watched_at, rated_at, added_at)` for that title); "Bayesian average" is `(v/(v+m))·R + (m/(v+m))·C` with `v` = the title's rating count, `R` its average,
-`C` the average over all ratings, `m = 5`.
+1. **`continue-watching`** (kind `continue-watching`)
+   - Title: `Continue watching for <name>`.
+   - Items: latest row per title with 1-89% progress, newest first.
+   - Reason: `Pick up where you left off.`
+2. **`top-picks`** (kind `top-picks`)
+   - Title: `Top picks for <name>`.
+   - Items: ranked, not watched/rated, with `match`.
+   - Reason: `Ranked from the genres and people you watch, what similar viewers enjoyed, and what's popular.`
+   - Cold start with picks: `Popular in the genres you picked — rate a few to personalise this row.`
+   - Cold start with no picks: `Popular titles to get you started — rate a few to personalise this row.`
+3. **`because-you-liked-<anchorId>`** (3a and 3b; kind `because-you-liked`, plus `anchor`)
+   - Title: `Because you liked <anchor>`.
+   - Items: unseen, by 0.65 x kNN + 0.35 x content similarity.
+   - Reason: kNN-dominated `Viewers who enjoyed X also watched these.`, else `Shares genres and people with X.`
+4. **`trending`** (kind `trending`)
+   - Title: `Trending now`.
+   - Items: most distinct viewers in 7 days, then release date.
+   - Reason: `The most-watched titles on Reelhouse right now.`
+5. **`top-rated-genre`** (kind `top-rated-genre`)
+   - Title: `Top rated in <Genre>`.
+   - Items: strongest genre by Bayesian average (m = 5).
+   - Reason: `<Genre> is your strongest genre — sorted by audience rating.` or, with only picks, `You picked <Genre> during setup — here are its best-reviewed titles.`
+6. **`more-with-person`** (kind `more-with-person`)
+   - Title: `From <director>` / `More with <actor>`.
+   - Items: strongest person with >= 3 titles, >= 2 unseen.
+   - Reason: `You've enjoyed N titles featuring/by <name>.`
+7. **`genre-picks-<genreId>`** (7a and 7b; kind `genre-picks`)
+   - Title: `<Genre> for you`.
+   - Items: 2nd and 3rd strongest genres by score.
+   - Reason: `You picked <Genre> during setup.` or `You watch a lot of <Genre>.`
+8. **hero** (no row id or kind)
+   - Items: the first top pick, with `match`.
+   - Reason: `Our top pick for <name> tonight`, or `Popular on Reelhouse` with no signals.
+
+Rules:
+
+- 18 items per row; empty rows are omitted.
+- "Unseen" means no history row and no rating.
+- The because-you-liked anchors are the 2 titles with score >= 3 and the most recent activity (`greatest(max watched_at, rated_at, added_at)` for that title).
+- "Bayesian average" is `(v/(v+m))·R + (m/(v+m))·C`, where `v` is the title's rating count, `R` its average rating, `C` the average over all ratings, and `m = 5`.
 
 ### 6.5 Stage 5: storage
 
-`recommendation(profile_id, content_id, row_type, relevance_score, generated_at, rec_status)`, PK `(profile_id, content_id)`. Stores the personalised shelves'
-titles only; `rec_status` survives refreshes; see 5.7. Reasons and the because-you-liked anchor are never stored (SCHEMA.md normalisation notes).
+The table is `recommendation(profile_id, content_id, row_type, relevance_score, generated_at, rec_status)`, with PK `(profile_id, content_id)`.
+
+- It stores the personalised shelves' titles only.
+- `rec_status` survives refreshes (see 5.7).
+- Reasons and the because-you-liked anchor are never stored (SCHEMA.md normalisation notes).
 
 ---
 
 ## 7. Deep dive: refresh policy, `content_similarity` refresh, `rec_status` loop
 
+This section covers three questions. When do we rebuild `recommendation`? How do we keep `content_similarity` fresh? How does what the profile does feed back into `rec_status`?
+
 ### 7.1 When is `recommendation` regenerated? (OPEN DECISION, README 9.1)
 
-| Option                                            | Pros                                   | Cons                                                  |
-| ------------------------------------------------- | -------------------------------------- | ----------------------------------------------------- |
-| After every activity write                        | always fresh                           | every 10-second progress ping would run the pipeline  |
-| **On Home load when stale (recommended default)** | fresh after a change, no worker, cheap | first Home load after a change pays the pipeline cost |
-| Nightly batch                                     | cheap per request                      | Home ignores today's ratings; needs a scheduler       |
+Three options were considered.
 
-**Recommended default, as written in the service** (`shouldRefreshRecommendations`): regenerate on Home load when the newest `generated_at` is older than 15 minutes
-OR older than the profile's latest activity (`greatest(watched_at, rated_at, added_at, onboarded_at)`). The `continue-watching` row and the `because-you-liked` rows are
-rebuilt on every request regardless (they are not stored), so the parts of Home that must be instant always are. If mid-binge reruns are too expensive, drop the
-`watch_history` term of the activity check.
+- **After every activity write**
+  - Pro: always fresh.
+  - Con: every 10-second progress ping would run the pipeline.
+- **On Home load when stale (recommended default)**
+  - Pros: fresh after a change, no worker, cheap.
+  - Con: the first Home load after a change pays the pipeline cost.
+- **Nightly batch**
+  - Pro: cheap per request.
+  - Cons: Home ignores today's ratings; needs a scheduler.
+
+**Recommended default, as written in the service** (`shouldRefreshRecommendations`): regenerate on Home load when the newest `generated_at` is older than 15 minutes, OR older than the profile's latest activity (`greatest(watched_at, rated_at, added_at, onboarded_at)`).
+
+The `continue-watching` row and the `because-you-liked` rows are rebuilt on every request regardless, because they are not stored. So the parts of Home that must be instant always are. If mid-binge reruns are too expensive, drop the `watch_history` term of the activity check.
 
 ### 7.2 `content_similarity` refresh
 
-- Run `REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity;` **nightly**, and after the seed or after you add test activity. It needs the unique index `content_similarity_pair_key` (exists) and an already populated view (the seed ran a first non-concurrent refresh).
-- Cost is the self-join of `interaction_score` per profile (roughly the sum over profiles of titles-scored²): trivial for the demo data.
-- Trigger options (pick one; default first): (1) an npm script `db:refresh-similarity` running a small `tsx` script that calls `refreshContentSimilarity()` (use after seeding/testing; a hosted cron can call it); (2) a route such as `POST /api/admin/jobs/refresh-similarity` guarded by a `CRON_SECRET` header for Vercel Cron; (3) `pg_cron` on the database (Neon supports it on paid plans). The service function itself does not care.
+`content_similarity` is a materialized view, so it only changes when you refresh it.
+
+- Run `REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity;` **nightly**, and after the seed or after you add test activity.
+- It needs the unique index `content_similarity_pair_key` (exists) and an already populated view (the seed ran a first non-concurrent refresh).
+- Cost is the self-join of `interaction_score` per profile (roughly the sum over profiles of titles-scored²). It is trivial for the demo data.
+- Trigger options (pick one; default first):
+  1. An npm script `db:refresh-similarity` running a small `tsx` script that calls `refreshContentSimilarity()`. Use it after seeding/testing; a hosted cron can call it.
+  2. A route such as `POST /api/admin/jobs/refresh-similarity` guarded by a `CRON_SECRET` header for Vercel Cron.
+  3. `pg_cron` on the database (Neon supports it on paid plans).
+- The service function itself does not care which trigger you pick.
 - A stale view is harmless: `itemKnn` is just older. Titles never interacted with have no rows and rank on genre/people/prior.
 
 ### 7.3 `rec_status`: the feedback loop
 
-`SHOWN` (default when stored) -> `CLICKED` -> `WATCHED`, or `DISMISSED`.
+`rec_status` records what the profile did with a stored recommendation. The normal path is `SHOWN` (default when stored) -> `CLICKED` -> `WATCHED`. The other end state is `DISMISSED`.
 
-| Event                                             | Where                  | Transition                                                                  |
-| ------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
-| Recommendation stored by `storeRecommendations`   | stage 5                | row inserted as `SHOWN`                                                     |
-| Any progress write (< 90%) on a recommended title | `recordProgress`       | `SHOWN`/`CLICKED` -> `CLICKED`                                              |
-| Progress >= 90%                                   | `recordProgress`       | `SHOWN`/`CLICKED` -> `WATCHED`                                              |
-| Title page opened (optional)                      | `getTitleActivity`     | `SHOWN` -> `CLICKED` (README 9.14)                                          |
-| Dismissed                                         | no route yet           | `DISMISSED` (README 9.13)                                                   |
-| Refresh                                           | `storeRecommendations` | `rec_status` is **never** overwritten; stale non-dismissed rows are deleted |
+- **Recommendation stored** (`storeRecommendations`, stage 5): the row is inserted as `SHOWN`.
+- **Any progress write (< 90%) on a recommended title** (`recordProgress`): `SHOWN`/`CLICKED` -> `CLICKED`.
+- **Progress >= 90%** (`recordProgress`): `SHOWN`/`CLICKED` -> `WATCHED`.
+- **Title page opened, optional** (`getTitleActivity`): `SHOWN` -> `CLICKED` (README 9.14).
+- **Dismissed**: no route yet. -> `DISMISSED` (README 9.13).
+- **Refresh** (`storeRecommendations`): `rec_status` is **never** overwritten. Stale non-dismissed rows are deleted.
 
-`WATCHED` and `DISMISSED` never move back from `recordProgress` (its `WHERE rec_status IN ('SHOWN','CLICKED')`). Stage 3 drops `DISMISSED` titles, which is the loop's effect on ranking;
-`WATCHED` titles are removed by the "already finished" filter. `CLICKED`/`WATCHED` are available for later tuning (e.g. down-weight shown-but-never-clicked) but nothing uses them yet.
+Notes:
+
+- `WATCHED` and `DISMISSED` never move back from `recordProgress`, because of its `WHERE rec_status IN ('SHOWN','CLICKED')`.
+- Stage 3 drops `DISMISSED` titles. That is the loop's effect on ranking.
+- `WATCHED` titles are removed by the "already finished" filter.
+- `CLICKED`/`WATCHED` are available for later tuning (for example, down-weight shown-but-never-clicked), but nothing uses them yet.
 
 ---
 
 ## 8. Testing with the seeded data
 
+The seed gives three demo profiles, so you can check each stage against known numbers. Use these checks while you build and again before opening your PR.
+
 ### 8.1 Stage 1 expected values
 
-The seed gives three profiles; with `SELECT * FROM interaction_score WHERE profile_id = 1 ORDER BY score DESC;` you should see (titles by name):
+Run `SELECT * FROM interaction_score WHERE profile_id = 1 ORDER BY score DESC;`. You should see these scores (titles by name).
 
-| Profile | Title                                                | Signals                                              | Score  |
-| ------- | ---------------------------------------------------- | ---------------------------------------------------- | ------ |
-| 1 Riya  | Interstellar                                         | rated 5 (+4), watched 100% (+3)                      | 7      |
-| 1       | Inception                                            | rated 5 (+4), 100% (+3)                              | 7      |
-| 1       | Gone Girl                                            | rated 4 (+2), 96% (+3)                               | 5      |
-| 1       | Breaking Bad                                         | rated 4 (+2), S1E1/E2 100%, S1E3 41% -> max 100 (+3) | 5      |
-| 1       | Stranger Things                                      | S1E1 100%, S1E2 23% -> +3                            | 3      |
-| 1       | Dune                                                 | 62% (+1.5)                                           | 1.5    |
-| 1       | The Office                                           | rated 2 (-2), S2E1 100% (+3)                         | 1      |
-| 1       | Oppenheimer, Severance, Blade Runner 2049, Chernobyl | My List only                                         | 1 each |
-| 1       | Parasite                                             | 6% watched (-0.5)                                    | -0.5   |
-| 2 Kabir | The Dark Knight                                      | rated 5 (+4), 100% (+3)                              | 7      |
-| 2       | Arcane                                               | rated 5 (+4), S1E3 100% / S1E4 55% -> +3             | 7      |
-| 2       | Harry Potter and the Philosopher's Stone, Naruto     | My List only                                         | 1 each |
-| 2       | Star Wars                                            | 34% (between 10 and 49)                              | 0      |
-| 3 Mini  | Inside Out, Spirited Away                            | My List only                                         | 1 each |
+**Profile 1 (Riya):**
 
-Riya's because-you-liked anchors (score >= 3, most recent): the two most recently touched of Interstellar, Inception, Gone Girl, Breaking Bad, Stranger Things
-(Breaking Bad: last watched 2026-10-18; Interstellar: rated 2026-10-12 / watched 10-12).
+- Interstellar: rated 5 (+4), watched 100% (+3) -> **7**.
+- Inception: rated 5 (+4), 100% (+3) -> **7**.
+- Gone Girl: rated 4 (+2), 96% (+3) -> **5**.
+- Breaking Bad: rated 4 (+2), S1E1/E2 100%, S1E3 41% -> max 100 (+3) -> **5**.
+- Stranger Things: S1E1 100%, S1E2 23% -> +3 -> **3**.
+- Dune: 62% (+1.5) -> **1.5**.
+- The Office: rated 2 (-2), S2E1 100% (+3) -> **1**.
+- Oppenheimer, Severance, Blade Runner 2049, Chernobyl: My List only -> **1 each**.
+- Parasite: 6% watched (-0.5) -> **-0.5**.
+
+**Profile 2 (Kabir):**
+
+- The Dark Knight: rated 5 (+4), 100% (+3) -> **7**.
+- Arcane: rated 5 (+4), S1E3 100% / S1E4 55% -> +3 -> **7**.
+- Harry Potter and the Philosopher's Stone, Naruto: My List only -> **1 each**.
+- Star Wars: 34% (between 10 and 49) -> **0**.
+
+**Profile 3 (Mini):**
+
+- Inside Out, Spirited Away: My List only -> **1 each**.
+
+Riya's because-you-liked anchors (score >= 3, most recent) are the two most recently touched of Interstellar, Inception, Gone Girl, Breaking Bad and Stranger Things. Breaking Bad was last watched 2026-10-18. Interstellar was rated 2026-10-12 and watched 10-12.
 
 ### 8.2 curl checks
 
@@ -966,10 +1438,19 @@ curl -b jar $BASE/api/profiles/1/titles/1                      # resume null (co
 curl -b jar $BASE/api/profiles/3/home | jq '.rows[].id'        # Mini: KIDS only, cold start with no picks
 ```
 
-Check, per profile: no row repeats a title the profile finished; Mini (KIDS) never sees PG-13+ items; rows have `reason`; `because-you-liked` rows carry `anchor`;
-the same call twice within 15 minutes returns the same `generatedAt` (served from `recommendation`); rating a title then reloading Home changes it (`generated_at < latest activity`).
-Create a brand-new profile (`POST /api/profiles`, Tejasva) and complete onboarding with 3 genres: Home must be the popular titles of those genres with the cold-start reasons.
-The seed is small (15 history rows, 7 ratings), so to exercise kNN add activity for several profiles via curl, run the refresh (7.2), then recheck.
+Check, per profile:
+
+- No row repeats a title the profile finished.
+- Mini (KIDS) never sees PG-13+ items.
+- Rows have `reason`.
+- `because-you-liked` rows carry `anchor`.
+- The same call twice within 15 minutes returns the same `generatedAt` (served from `recommendation`).
+- Rating a title then reloading Home changes it (`generated_at < latest activity`).
+
+Also:
+
+- Create a brand-new profile (`POST /api/profiles`, Tejasva) and complete onboarding with 3 genres. Home must be the popular titles of those genres with the cold-start reasons.
+- The seed is small (15 history rows, 7 ratings). To exercise kNN, add activity for several profiles via curl, run the refresh (7.2), then recheck.
 
 ### 8.3 SQL spot checks
 
@@ -984,36 +1465,50 @@ EXPLAIN ANALYZE <the stage-2 queries>;      -- all should be milliseconds at thi
 
 ## 9. Implementation notes and pitfalls
 
+These are the traps you are most likely to hit while building the pipeline.
+
 ### 9.1 Share stage-2 results with stage 4
 
-`buildHomeRows` needs the "strongest genre" and "strongest person" (and the picked-genre set) from stage 2, but `Candidate` only holds the four parts. Options:
-(a) write two private helpers `genreAffinities(profileId)` and `peopleAffinities(profileId)` (the 5.4a/5.4b queries) used by both `generateCandidates` and `buildHomeRows`
-(two extra cheap queries per refresh); (b) cache them in a module-level `WeakMap`/`Map` keyed by the `scores` object, or a per-call context object (keep the exported signatures). Prefer (a).
-`profile_genre_preference` also tells stage 4 whether the profile has "only onboarding picks" (empty `scores`) for the reason wording.
+`buildHomeRows` needs the "strongest genre" and "strongest person" (and the picked-genre set) from stage 2. But `Candidate` only holds the four parts. There are two options:
+
+- (a) Write two private helpers, `genreAffinities(profileId)` and `peopleAffinities(profileId)` (the 5.4a/5.4b queries). Both `generateCandidates` and `buildHomeRows` use them. This costs two extra cheap queries per refresh.
+- (b) Cache the results in a module-level `WeakMap`/`Map` keyed by the `scores` object (a `WeakMap` drops entries automatically when the key is no longer used), or in a per-call context object. Keep the exported signatures.
+
+Prefer (a). Also, `profile_genre_preference` tells stage 4 whether the profile has "only onboarding picks" (empty `scores`), for the reason wording.
 
 ### 9.2 Serving stored rows (cache hit)
 
-`recommendation` only keeps `(content_id, row_type, relevance_score)` of the personalised shelves, but the row **titles** need context (which genre, which person) that is not stored. On a cache hit:
-load the stored rows, hydrate them into `RankedCandidate[]` (`content` summaries via one query; `score = relevance_score`, `match = round(55 + 44 x min(1, score / maxStoredScore))`),
-recompute `scores` (stage 1, cheap) and call `buildHomeRows(ranked, profile, scores)`, which recomputes the strongest genre/person with the cheap helpers of 9.1 and rebuilds the non-stored rows. That way the
-reasons are always computed and the heavy part (candidates + kNN + filters) is skipped.
+`recommendation` only keeps `(content_id, row_type, relevance_score)` of the personalised shelves. But the row **titles** need context (which genre, which person) that is not stored.
+
+On a cache hit (serving stored rows):
+
+1. Load the stored rows.
+2. Hydrate them into `RankedCandidate[]`: `content` summaries via one query, `score = relevance_score`, `match = round(55 + 44 x min(1, score / maxStoredScore))`.
+3. Recompute `scores` (stage 1, cheap).
+4. Call `buildHomeRows(ranked, profile, scores)`. It recomputes the strongest genre/person with the cheap helpers of 9.1 and rebuilds the non-stored rows.
+
+That way the reasons are always computed, and the heavy part (candidates + kNN + filters) is skipped.
 
 ### 9.3 Seed-sized data and the Bayesian row
 
-With 7 ratings, `JOIN stats` (inner) leaves `top-rated-genre` almost empty. Implement it as `LEFT JOIN stats` with `COALESCE(v, 0)`/`COALESCE(r, c)`: a title with no ratings gets `(0/(0+5))·R + (5/5)·C = C` (the global mean), which is exactly the Bayesian formula for `v = 0`, so
-rated titles rise or fall around it and the row is still full. Same idea for `trending` when nobody watched anything this week: fall back to the popularity prior order.
+With only 7 ratings, an inner `JOIN stats` leaves `top-rated-genre` almost empty.
+
+- Implement it as `LEFT JOIN stats` with `COALESCE(v, 0)` / `COALESCE(r, c)`.
+- A title with no ratings then gets `(0/(0+5))·R + (5/5)·C = C` (the global mean). That is exactly the Bayesian formula for `v = 0`. Rated titles rise or fall around it, and the row is still full.
+- Use the same idea for `trending` when nobody watched anything this week: fall back to the popularity prior order.
 
 ### 9.4 Mapping and types
 
-- `interaction_score.score`, kNN sums, Bayesian averages arrive as strings (numeric): `Number()`.
-- `watched_at`, `added_at`, `rated_at`, `generated_at`: ISO strings in the API (README 3.7).
-- Row ids: `because-you-liked-<contentId>`, `genre-picks-<genreId>`; the others are plain kind names.
-- `HomeFeed.generatedAt` is an ISO string; `hero` is `null` only if the catalogue is empty/all filtered.
+- `interaction_score.score`, kNN sums and Bayesian averages arrive as strings (numeric): use `Number()`.
+- `watched_at`, `added_at`, `rated_at`, `generated_at` are ISO strings in the API (README 3.7).
+- Row ids: `because-you-liked-<contentId>` and `genre-picks-<genreId>`; the others are plain kind names.
+- `HomeFeed.generatedAt` is an ISO string. `hero` is `null` only if the catalogue is empty or all filtered.
 
 ### 9.5 Performance guardrails
 
-`recordProgress` is the hot write: no extra reads beyond the content-type lookup and, for series, the episode-belongs check; the `UPDATE recommendation` touches at most one row by PK. Home (cold) is ~8 queries; run independent ones with `Promise.all`.
-Do not run the pipeline in `getTitleActivity`.
+- `recordProgress` is the hot write. Make no extra reads beyond the content-type lookup and, for series, the episode-belongs check. The `UPDATE recommendation` touches at most one row by PK.
+- Home (cold) is about 8 queries. Run independent ones with `Promise.all`.
+- Do not run the pipeline in `getTitleActivity`.
 
 ### 9.6 What not to do
 
@@ -1025,6 +1520,8 @@ Do not run the pipeline in `getTitleActivity`.
 ---
 
 ## 10. Definition of done
+
+Tick every box before you ask for review.
 
 - [ ] `activity.service.ts` and `recommendations.service.ts` import nothing from `@/server/mocks` (`grep -n "server/mocks" src/server/services/{activity,recommendations}.service.ts` is empty); `isCompleted`/`formatEpisodeCode` come from `@/lib/content/progress` and `@/lib/format`.
 - [ ] Every function matches its SQL, errors, transaction and idempotency notes above; typed errors only.

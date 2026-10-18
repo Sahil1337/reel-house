@@ -12,6 +12,7 @@ export function MostWatched({ widget, className }: { widget: DashboardWidget<Mos
   return (
     <ChartCard
       title="Most watched"
+      href="/admin/content"
       description="Distinct profiles per title, from watch_history"
       action={<ViewSql title="Most watched" widget={widget} />}
       className={className}

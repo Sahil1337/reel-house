@@ -3,6 +3,8 @@
  * reads as one system. Mark specs (hairline grid, thin marks, ≤24px bars, 4px rounded data-ends,
  * 2px surface gaps) live in CHART_DEFAULTS; colours are the --chart-* tokens in fixed order.
  */
+import Link from "next/link";
+
 import { cn } from "@/lib/utils";
 
 /** Recharts props reused by every chart so they're specced alike. */
@@ -33,22 +35,34 @@ export function compact(value: number, prefix = ""): string {
   return `${prefix}${value.toLocaleString("en-IN")}`;
 }
 
+const LINK_CLASS =
+  "rounded-sm outline-none transition-colors duration-150 hover:text-foreground hover:underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring";
+
 /** Stat tile: label, value (proportional figures, app sans), a detail line and an action slot. */
 export function StatTile({
   label,
   value,
   detail,
   action,
+  href,
 }: {
   label: string;
   value: string;
   detail?: React.ReactNode;
   action?: React.ReactNode;
+  /** Admin page that manages what this number counts; turns the label into a link. */
+  href?: string;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-xs/5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm text-muted-foreground">{label}</span>
+        {href ? (
+          <Link href={href} className={cn("text-sm text-muted-foreground", LINK_CLASS)}>
+            {label} <span aria-hidden="true">→</span>
+          </Link>
+        ) : (
+          <span className="text-sm text-muted-foreground">{label}</span>
+        )}
         {action}
       </div>
       <span className="text-2xl font-semibold leading-none">{value}</span>
@@ -67,12 +81,15 @@ export function ChartCard({
   title,
   description,
   action,
+  href,
   children,
   className,
 }: {
   title: string;
   description?: string;
   action?: React.ReactNode;
+  /** Admin page that manages what this widget shows; turns the title into a link. */
+  href?: string;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -80,7 +97,15 @@ export function ChartCard({
     <section className={cn("flex min-w-0 flex-col gap-4 rounded-xl border bg-card p-4 shadow-xs/5", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 className="text-sm font-medium">{title}</h2>
+          <h2 className="text-sm font-medium">
+            {href ? (
+              <Link href={href} className={LINK_CLASS}>
+                {title} <span aria-hidden="true">→</span>
+              </Link>
+            ) : (
+              title
+            )}
+          </h2>
           {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
         </div>
         {action}

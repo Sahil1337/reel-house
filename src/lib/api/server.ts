@@ -9,6 +9,7 @@ import { cookies, headers } from "next/headers";
 
 import type {
   AdminDashboard,
+  AdminPlan,
   ContentDetail,
   ContentSummary,
   Genre,
@@ -85,4 +86,5 @@ export const serverApi = {
 
   // Admin
   getAdminDashboard: () => get<AdminDashboard>("/admin/dashboard"),
+  getAdminPlans: async () => (await get<{ plans: AdminPlan[] }>("/admin/plans")).plans,
 };

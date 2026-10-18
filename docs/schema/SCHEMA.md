@@ -1,40 +1,96 @@
 # Database schema
 
-The agreed design for Phase 1 (see the [backend guide](../backend/README.md)). PostgreSQL 15+ (Neon).
-17 tables, 1 view, 1 materialized view, all in 3NF.
+This is the agreed database design for Phase 1 (see the [backend guide](../backend/README.md)). It
+runs on PostgreSQL 15+ (hosted on Neon) and has 17 tables, 1 view and 1 materialized view (a view
+whose result is stored on disk and refreshed on demand). Every table is in 3NF (third normal form,
+explained in [Normalisation notes](#normalisation-notes-for-the-report)).
 
 ![Relational schema](schema-diagram.png)
 
-It starts from the domain description's 16 entities, merges CONTENT_CAST and CONTENT_DIRECTOR into
-one `content_credit` table (16 − 1 = 15), and adds two tables, `profile_genre_preference` and
-`recommendation` (= 17). Everything that differs from the domain description:
+## Contents
 
-| Addition                                                                                 | Why                                                                                                                             |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `content_credit` (replaces CONTENT_CAST + CONTENT_DIRECTOR)                              | one credits table with a `role` discriminator, so a new credit type is an enum value, not a new table (see [Credits](#credits)) |
-| `maturity_of()` function                                                                 | maturity is derived from `content.age_rating` when a query needs it, never stored                                               |
-| `profile_genre_preference`                                                               | the genres picked during onboarding — the cold-start input for recommendations                                                  |
-| `recommendation`                                                                         | the pipeline's stored output, one row per (profile, title), with a feedback status                                              |
-| `interaction_score` view, `content_similarity` materialized view                         | stage 1 and the item-kNN of the recommendation pipeline                                                                         |
-| `users.role`, `watch_history.episode_id`, image URLs on `content` / `person` / `episode` | admin panel, episode-level progress, real catalogue data                                                                        |
+- [What changed from the domain description](#what-changed-from-the-domain-description)
+- [Decisions](#decisions)
+- [ER diagram](#er-diagram)
+- [Definition (all the SQL)](#definition)
+  - [Enums](#enums)
+  - [Account and billing](#account--billing)
+  - [Content catalogue](#content-catalogue) (including [Natural keys](#natural-keys) and [Credits](#credits))
+  - [Viewing activity](#viewing-activity)
+  - [Recommendations](#recommendations)
+- [Ranking](#ranking)
+- [Payment flow](#payment-flow)
+- [Normalisation notes](#normalisation-notes-for-the-report)
+- [Domain names to column names](#domain-names--column-names)
+- [Drizzle notes](#drizzle-notes)
+- [Still open](#still-open)
+
+## What changed from the domain description
+
+The domain description lists 16 entities. We merge CONTENT_CAST and CONTENT_DIRECTOR into one
+`content_credit` table (16 - 1 = 15) and add two tables, `profile_genre_preference` and
+`recommendation` (15 + 2 = 17). Everything that differs from the domain description:
+
+- **`content_credit`** replaces CONTENT_CAST and CONTENT_DIRECTOR. One credits table with a `role`
+  column, so a new credit type is a new enum value, not a new table (see [Credits](#credits)).
+- **`maturity_of()` function.** Maturity is worked out from `content.age_rating` when a query needs
+  it, and is never stored.
+- **`profile_genre_preference`.** The genres a user picks during onboarding. They are the
+  cold-start input for recommendations (what we know about a profile before it has any activity).
+- **`recommendation`.** The recommendation pipeline's stored output: one row per (profile, title),
+  with a feedback status.
+- **`interaction_score` view and `content_similarity` materialized view.** Stage 1 and the
+  item-kNN (item-to-item nearest-neighbour similarity) stage of the recommendation pipeline.
+- **`users.role`, `watch_history.episode_id`, and image URLs** on `content`, `person` and
+  `episode`. They support the admin panel, episode-level progress and real catalogue data.
 
 ## Decisions
 
-| Topic            | Decision                                                                                                                                                                                                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| USER table name  | `users` (`user` is reserved in PostgreSQL)                                                                                                                                                                                                                                           |
-| Recommendations  | stored per profile in `recommendation`, keyed `(profile_id, content_id)`, refreshed after activity; `rec_status` is the feedback loop. A row's reason text and the "Because you liked X" anchor are computed when Home is built, never stored                                        |
-| Watch history    | one row per (profile, title, episode), updated in place — `UNIQUE NULLS NOT DISTINCT`                                                                                                                                                                                                |
-| Maturity         | derived, never stored: `maturity_of(content.age_rating)`; `age_rating` is a plain column limited by a CHECK to the US certificate codes                                                                                                                                              |
-| Cast & directors | one `content_credit` table, `role` = `'ACTOR'` or `'DIRECTOR'`; the API still returns them as `cast` and `directors`                                                                                                                                                                 |
-| Completed        | not a column: a row is completed when `progress_percent >= 90`, written into each query that needs it (app code: `isCompleted()` with `COMPLETED_THRESHOLD`)                                                                                                                         |
-| Profile language | not stored: there's no language data in the catalogue for it to filter on                                                                                                                                                                                                            |
-| Ids              | `INT GENERATED ALWAYS AS IDENTITY` surrogate keys; natural keys made of real attributes (`email`; `content (title, content_type, release_date)`; `person (name, date_of_birth)`, …) are UNIQUE                                                                                       |
-| TMDB ids         | not stored. The import and the seed find duplicates by those natural keys; TMDB ids live only outside the database (the `data/tmdb` snapshot, the admin's TMDB search) — see [Natural keys](#natural-keys)                                                                           |
-| Billing deletes  | `RESTRICT` — payments are financial records and never disappear with an account                                                                                                                                                                                                      |
-| Payments         | Razorpay. Checkout creates a PENDING `subscription` (= the Razorpay order); the webhook writes one `payment` row per attempt (FAILED or SUCCESS) and activates the subscription on capture (Checkout's verify call can record the capture first) — see [Payment flow](#payment-flow) |
+Each bullet is one design choice and the reason behind it.
+
+- **Table name `users`.** `user` is a reserved word in PostgreSQL.
+- **Recommendations.**
+  - They are stored per profile in `recommendation`, keyed `(profile_id, content_id)`, and
+    refreshed after activity.
+  - `rec_status` is the feedback loop.
+  - A row's reason text and the "Because you liked X" anchor are computed when Home is built,
+    never stored.
+- **Watch history.** One row per (profile, title, episode), updated in place. This is enforced
+  with `UNIQUE NULLS NOT DISTINCT` (a unique rule that treats two NULLs as equal, so movies with
+  `episode_id = NULL` still get one row).
+- **Maturity.**
+  - Derived, never stored: `maturity_of(content.age_rating)`.
+  - `age_rating` is a plain column limited by a CHECK to the US certificate codes.
+- **Cast and directors.**
+  - One `content_credit` table, with `role` = `'ACTOR'` or `'DIRECTOR'`.
+  - The API still returns them as `cast` and `directors`.
+- **Completed.**
+  - Not a column. A row counts as completed when `progress_percent >= 90`, and that condition is
+    written into each query that needs it.
+  - In app code this is `isCompleted()` with `COMPLETED_THRESHOLD`.
+- **Profile language.** Not stored, because there is no language data in the catalogue for it to
+  filter on.
+- **Ids.**
+  - Surrogate keys (made-up ids) of the form `INT GENERATED ALWAYS AS IDENTITY`.
+  - Natural keys made of real attributes are `UNIQUE`: `email`;
+    `content (title, content_type, release_date)`; `person (name, date_of_birth)`, and so on.
+- **TMDB ids.**
+  - Not stored. The import and the seed find duplicates by the natural keys above.
+  - TMDB ids live only outside the database (the `data/tmdb` snapshot and the admin's TMDB
+    search). See [Natural keys](#natural-keys).
+- **Billing deletes.** `RESTRICT` (the database refuses to delete a row that others still point
+  at). Payments are financial records and never disappear with an account.
+- **Payments.**
+  - Razorpay is the payment gateway.
+  - Checkout creates a PENDING `subscription` (this is the Razorpay order).
+  - The webhook writes one `payment` row per attempt (FAILED or SUCCESS) and activates the
+    subscription on capture. Checkout's verify call can record the capture first.
+  - See [Payment flow](#payment-flow).
 
 ## ER diagram
+
+An ER (entity-relationship) diagram shows which tables point at which. Read `A ||--o{ B` as "one A
+has many B".
 
 ```mermaid
 erDiagram
@@ -65,7 +121,16 @@ erDiagram
 
 ## Definition
 
+This section is the full SQL, grouped by area. Comments inside the SQL explain the non-obvious
+columns. Some terms used below:
+
+- **`ON DELETE CASCADE`**: deleting the parent row also deletes the rows that point at it.
+- **Partial unique index**: a uniqueness rule that only applies to rows matching a `WHERE` condition.
+- **Upsert**: insert a row, or update it if it already exists.
+
 ### Enums
+
+Enums (named lists of allowed values) used by the columns below.
 
 ```sql
 CREATE TYPE user_role           AS ENUM ('USER', 'ADMIN');
@@ -79,6 +144,10 @@ CREATE TYPE rec_status          AS ENUM ('SHOWN', 'CLICKED', 'WATCHED', 'DISMISS
 ```
 
 ### Account & billing
+
+Users, their profiles, the subscription plans, subscriptions and payments. A user can have up to 5
+profiles (checked in the API) and many subscriptions over time, but only one ACTIVE subscription at
+once.
 
 ```sql
 CREATE TABLE users (
@@ -140,6 +209,9 @@ CREATE INDEX payment_subscription_idx ON payment (subscription_id, payment_date 
 ```
 
 ### Content catalogue
+
+Everything browsable: genres, titles (movies and series), seasons, episodes, people and credits.
+`maturity_of()` turns a title's US certificate into KIDS, TEEN or ADULT.
 
 ```sql
 CREATE TABLE genre (
@@ -225,31 +297,48 @@ CREATE INDEX content_credit_person_idx ON content_credit (person_id);
 
 #### Natural keys
 
-The catalogue comes from TMDB, but the database stores no TMDB ids: duplicates are found with
-natural keys made of real columns, next to the surrogate `content_id` / `person_id`.
+The catalogue comes from TMDB, but the database stores no TMDB ids. Duplicates are found with
+natural keys (unique combinations of real columns) that sit next to the surrogate
+`content_id` / `person_id`.
 
-- **`content (title, content_type, release_date)`**: _Dune_ (1984) and _Dune_ (2021) differ by
-  date, and `NULLS NOT DISTINCT` makes a title with no release date still match itself instead of
-  being inserted again on every import. A title TMDB later renames or re-dates comes in as a new row.
-- **`person (name, date_of_birth)`**: same idea. Known limitation, accepted: two different people
-  with the same name and no birth date are merged into one row.
+- **`content (title, content_type, release_date)`**
+  - _Dune_ (1984) and _Dune_ (2021) differ by date, so they are different rows.
+  - `NULLS NOT DISTINCT` makes a title with no release date still match itself, instead of being
+    inserted again on every import.
+  - A title that TMDB later renames or re-dates comes in as a new row.
+- **`person (name, date_of_birth)`**
+  - Same idea as above.
+  - Known limitation, accepted: two different people with the same name and no birth date are
+    merged into one row.
 
-The admin import (`src/lib/sql/import-title.ts`) upserts on these keys and finds the rows again by
-them in every later statement (`… AND release_date IS NOT DISTINCT FROM $3`). TMDB ids exist only
-outside the database: the `data/tmdb` snapshot and its mappers, the admin's TMDB search, and the
-`data/mock` rows, which reference titles as `{ contentType, tmdbId }` — the seed matches those to
-snapshot entries in memory and inserts by natural key, never storing the id.
+How the import uses them:
+
+- The admin import (`src/lib/sql/import-title.ts`) upserts on these keys and finds the rows again
+  by them in every later statement (`... AND release_date IS NOT DISTINCT FROM $3`).
+- TMDB ids exist only outside the database:
+  - the `data/tmdb` snapshot and its mappers
+  - the admin's TMDB search
+  - the `data/mock` rows, which reference titles as `{ contentType, tmdbId }`
+- The seed matches those mock references to snapshot entries in memory and inserts by natural key.
+  It never stores the id.
 
 #### Credits
 
 `content_credit` deliberately merges two domain entities, CONTENT_CAST and CONTENT_DIRECTOR, using
-`role` as a discriminator: both are "this person is credited on this title", so one table holds
-them, and a new credit type (writer, producer) is a new `credit_role` value rather than a new
-table. `role` is part of the key, so one person can both act in and direct a title; the CHECK keeps
-`character_name` for actors. The API still returns the two lists separately — `cast` is
-`role = 'ACTOR' ORDER BY credit_order`, `directors` is `role = 'DIRECTOR' ORDER BY credit_order`.
+`role` as a discriminator (a column that says which kind of row this is).
+
+- Both are "this person is credited on this title", so one table holds them. A new credit type
+  (writer, producer) is a new `credit_role` value, not a new table.
+- `role` is part of the primary key, so one person can both act in and direct the same title.
+- The CHECK keeps `character_name` for actors only.
+- The API still returns two separate lists:
+  - `cast` is `role = 'ACTOR' ORDER BY credit_order`
+  - `directors` is `role = 'DIRECTOR' ORDER BY credit_order`
 
 ### Viewing activity
+
+What each profile watches, saves, rates and picks during onboarding. Onboarding needs at least 3
+genres (checked in the API).
 
 ```sql
 CREATE TABLE watch_history (
@@ -287,6 +376,13 @@ CREATE TABLE profile_genre_preference (               -- onboarding: at least 3 
 ```
 
 ### Recommendations
+
+The stored recommendations, plus the two database objects that feed them:
+
+- `interaction_score` (a view, a saved query that always shows fresh data) gives one score per
+  (profile, title) from every signal.
+- `content_similarity` (a materialized view) holds title-to-title similarity. It is expensive to
+  compute, so it is stored and refreshed on a schedule.
 
 ```sql
 CREATE TABLE recommendation (
@@ -348,18 +444,33 @@ CREATE UNIQUE INDEX content_similarity_pair_key ON content_similarity (content_a
 
 ## Ranking
 
-`content` keeps no popularity or vote figures from TMDB: every ranking is computed from our own
+`content` keeps no popularity or vote figures from TMDB. Every ranking is computed from our own
 `watch_history` and `rating` rows. The full pipeline (signals, candidates, the home rows and their
 reasons) is specified in `src/server/services/recommendations.service.ts` and
-[`backend/person-c-activity-recommendations.md`](../backend/person-c-activity-recommendations.md); the parts that touch the schema:
+[`backend/person-c-activity-recommendations.md`](../backend/person-c-activity-recommendations.md).
+This section covers only the parts that touch the schema.
 
-| Measure          | Definition                                                                                                                                                 | Used by                                             |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Popularity prior | distinct profiles who watched the title in the last 30 days, `ln(1 + n)`, min-max normalised to 0–1                                                        | the ranking blend, search with no query, cold start |
-| Trending         | most distinct viewers in the last 7 days                                                                                                                   | the "Trending now" row                              |
-| Top rated        | Bayesian average of `rating.value`: `(v/(v+m))·R + (m/(v+m))·C` — `v` the title's rating count, `R` its average, `C` the average over all ratings, `m` = 5 | the "Top rated in <genre>" row                      |
+### Measures
+
+- **Popularity prior**
+  - Definition: the number of distinct profiles who watched the title in the last 30 days,
+    as `ln(1 + n)`, min-max normalised to 0-1.
+  - Used by: the ranking blend, search with no query, and cold start.
+- **Trending**
+  - Definition: the most distinct viewers in the last 7 days.
+  - Used by: the "Trending now" row.
+- **Top rated**
+  - Definition: the Bayesian average (an average pulled towards the global mean when a title has
+    few ratings) of `rating.value`: `(v/(v+m))·R + (m/(v+m))·C`.
+    - `v` is the title's rating count.
+    - `R` is its average rating.
+    - `C` is the average over all ratings.
+    - `m` = 5.
+  - Used by: the "Top rated in <genre>" row.
 
 Ties always break on `release_date DESC`.
+
+### SQL for the measures
 
 ```sql
 -- Popularity prior for every title (0 when nobody watched it in the window).
@@ -387,6 +498,8 @@ JOIN content AS c ON c.content_id = s.content_id
 ORDER BY bayes DESC, c.release_date DESC NULLS LAST;
 ```
 
+### The blend
+
 The blend that orders a profile's top picks:
 
 ```
@@ -394,128 +507,188 @@ affinity = 0.6 × genre affinity + 0.4 × people affinity
 score    = 0.5 × affinity + 0.3 × item-kNN + 0.2 × popularity prior
 ```
 
-**Cold start.** Onboarding stores only `profile_genre_preference` (at least 3 genres) and sets
-`profile.onboarded_at`. Each picked genre adds +2 to that genre's affinity. A new profile has no
-`interaction_score` rows, so people affinity and kNN are 0: Home is the picked genres' titles,
-ranked by the popularity prior. Ratings, watching and My List take over as they accumulate.
+### Cold start
+
+Cold start is a brand-new profile with no activity yet.
+
+- Onboarding stores only `profile_genre_preference` (at least 3 genres) and sets
+  `profile.onboarded_at`.
+- Each picked genre adds +2 to that genre's affinity.
+- A new profile has no `interaction_score` rows, so people affinity and kNN are 0.
+- So Home is the picked genres' titles, ranked by the popularity prior.
+- Ratings, watching and My List take over as they accumulate.
 
 ## Payment flow
 
-Razorpay's model is one order → many payment attempts, which maps onto one `subscription` → many `payment` rows.
+Razorpay's model is one order with many payment attempts. That maps onto one `subscription` with
+many `payment` rows. The happy path looks like this:
 
-```
-Click "Pay"        POST /api/account/subscriptions
-                   INSERT subscription (status 'PENDING', dates NULL)   -- earlier PENDING ones → CANCELLED
-                   create a Razorpay order { amount = price_monthly × 100, notes: { subscription_id } }
-                   → Razorpay Checkout opens in the browser
-
-Checkout success   POST /api/payments/verify (Checkout's razorpay_signature verified)
-                   same recordCapturedPayment as payment.captured below; whichever of the two
-                   arrives first records the payment, the other hits ON CONFLICT and stops
-
-payment.failed     POST /api/payments/webhook (signature verified)
-                   INSERT payment (…, 'FAILED') ON CONFLICT (transaction_ref) DO NOTHING
-                   -- subscription stays PENDING; the user can retry on the same order
-
-payment.captured   POST /api/payments/webhook, one transaction:
-                   lock the subscription (FOR UPDATE)
-                   INSERT payment (…, 'SUCCESS') ON CONFLICT (transaction_ref) DO NOTHING
-                     -- nothing inserted = already processed → stop
-                   check amount = plan price
-                   old ACTIVE subscription → CANCELLED   (plan change; first, because of the one-ACTIVE index)
-                   this one → ACTIVE, start_date = now(), end_date = now() + 1 month
-                   (already ACTIVE = a renewal order → extend end_date instead)
-
-Never paid         stays PENDING, cancelled at the user's next checkout; never shown in billing history
-Renewal            a new order whose notes carry the ACTIVE subscription_id → extends end_date
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant A as Our API
+  participant R as Razorpay
+  B->>A: Click Pay (POST /api/account/subscriptions)
+  A->>R: Create order
+  A-->>B: Open Razorpay Checkout
+  B->>R: Pay
+  R->>A: payment.captured webhook
+  A->>A: Record payment, activate subscription
 ```
 
-Idempotency comes from the database: `UNIQUE (transaction_ref)` makes a repeated webhook a no-op,
-and the row lock plus the partial unique index stop two payments from creating two ACTIVE plans.
+Each event in plain words:
+
+1. **Click "Pay"** (`POST /api/account/subscriptions`)
+   - Insert a `subscription` with status `'PENDING'` and NULL dates. Any earlier PENDING ones for
+     the user become CANCELLED.
+   - Create a Razorpay order `{ amount = price_monthly × 100, notes: { subscription_id } }`.
+   - Razorpay Checkout opens in the browser.
+2. **Checkout success** (`POST /api/payments/verify`)
+   - Checkout's `razorpay_signature` is verified first.
+   - It then runs the same `recordCapturedPayment` as `payment.captured` below.
+   - Whichever of the two arrives first records the payment. The other hits `ON CONFLICT` (the
+     insert is refused because the row already exists) and stops.
+3. **`payment.failed`** (`POST /api/payments/webhook`, signature verified)
+   - `INSERT payment (…, 'FAILED') ON CONFLICT (transaction_ref) DO NOTHING`.
+   - The subscription stays PENDING, so the user can retry on the same order.
+4. **`payment.captured`** (`POST /api/payments/webhook`), all in one transaction:
+   1. Lock the subscription row (`FOR UPDATE`, which makes other transactions wait for it).
+   2. `INSERT payment (…, 'SUCCESS') ON CONFLICT (transaction_ref) DO NOTHING`. If nothing was
+      inserted, it was already processed, so stop.
+   3. Check that the amount equals the plan price.
+   4. Turn the user's old ACTIVE subscription into CANCELLED (a plan change). This goes first
+      because of the one-ACTIVE index.
+   5. Set this subscription to ACTIVE, with `start_date = now()` and
+      `end_date = now() + 1 month`. If it is already ACTIVE, this is a renewal order, so extend
+      `end_date` instead.
+5. **Never paid.** The subscription stays PENDING, is cancelled at the user's next checkout, and is
+   never shown in billing history.
+6. **Renewal.** A new order whose notes carry the ACTIVE `subscription_id` extends `end_date`.
+
+Why this is safe to repeat (idempotent, meaning running it twice has the same effect as once):
+
+- `UNIQUE (transaction_ref)` makes a repeated webhook a no-op.
+- The row lock plus the partial unique index stop two payments from creating two ACTIVE plans.
 
 ## Normalisation notes (for the report)
 
-- **1NF:** every column is atomic. Multi-valued facts (a title's genres, cast, directors) live in
-  their own junction tables, never as lists in a column.
-- **2NF:** every composite-key table (`content_genre`, `content_credit`, `my_list`, `rating`,
-  `profile_genre_preference`) has only attributes that depend on the _whole_ key —
-  `character_name` and `credit_order` depend on (content, person, role), `rated_at` on
-  (profile, content); `content_genre` and `profile_genre_preference` are all-key.
-- **3NF:** no non-key attribute depends on another non-key attribute.
-  - Maturity is a derived attribute: `maturity_of()` computes it from `content.age_rating`, and
-    it is never stored. So there's no transitive dependency (`content_id → age_rating → maturity`)
-    and no lookup table is needed.
-  - `recommendation` is keyed by `(profile_id, content_id)`: a recommendation is one title _for_
-    one profile, so the natural composite key is the primary key and no surrogate id is needed.
-    `row_type`, `relevance_score`, `generated_at` and `rec_status` all depend on the whole key
-    (2NF). Reaching the profile through a watch-history row would make it depend on a non-key
-    attribute, and would leave profiles with no history (new ones) without recommendations.
-  - The human-readable reason and the "Because you liked X" anchor are _not_ stored: the reason is
-    a function of `row_type` plus context (a genre or person name, the anchor title), and the
-    anchor is recomputed from `content_similarity` when Home is built. Storing either would
-    duplicate derivable data and go stale when titles are renamed or similarities refresh.
-  - "Completed" is derived from `progress_percent` (`>= 90`), so it isn't stored at all — not even
-    as a generated column. Every query that needs it writes the predicate, and it can't drift.
-  - Popularity, trending and average ratings are aggregates of `watch_history` and `rating`, so
-    they're computed in queries (see [Ranking](#ranking)) instead of being stored on `content`,
-    where they would duplicate the activity rows and go stale.
-  - Candidate keys are real attributes, not imported ids: `content` has `content_id` (primary) and
-    `(title, content_type, release_date)`; `person` has `person_id` and `(name, date_of_birth)`.
-    Every non-key attribute depends on the whole of each candidate key, so the surrogate keys add
+Normalisation means arranging tables so each fact is stored once. These notes go through the first
+three normal forms.
+
+### 1NF (first normal form)
+
+- Every column is atomic (one value per cell).
+- Multi-valued facts (a title's genres, cast, directors) live in their own junction tables, never as
+  lists in a column.
+
+### 2NF (second normal form)
+
+- Every composite-key table (`content_genre`, `content_credit`, `my_list`, `rating`,
+  `profile_genre_preference`) has only attributes that depend on the _whole_ key.
+- `character_name` and `credit_order` depend on (content, person, role).
+- `rated_at` depends on (profile, content).
+- `content_genre` and `profile_genre_preference` are all-key (they have no other columns).
+
+### 3NF (third normal form)
+
+No non-key attribute depends on another non-key attribute. Points worth noting:
+
+- **Maturity**
+  - It is a derived attribute: `maturity_of()` computes it from `content.age_rating`, and it is
+    never stored.
+  - So there is no transitive dependency (`content_id → age_rating → maturity`) and no lookup
+    table is needed.
+- **`recommendation` key**
+  - It is keyed by `(profile_id, content_id)`: a recommendation is one title _for_ one profile, so
+    the natural composite key is the primary key and no surrogate id is needed.
+  - `row_type`, `relevance_score`, `generated_at` and `rec_status` all depend on the whole key
+    (2NF).
+  - Reaching the profile through a watch-history row would make it depend on a non-key attribute,
+    and would leave profiles with no history (new ones) without recommendations.
+- **Reason text and anchor not stored**
+  - The human-readable reason and the "Because you liked X" anchor are _not_ stored.
+  - The reason is a function of `row_type` plus context (a genre or person name, the anchor title).
+    The anchor is recomputed from `content_similarity` when Home is built.
+  - Storing either would duplicate derivable data and go stale when titles are renamed or
+    similarities refresh.
+- **"Completed" not stored**
+  - It is derived from `progress_percent` (`>= 90`), so it is not stored at all, not even as a
+    generated column.
+  - Every query that needs it writes the predicate, so it can't drift.
+- **Popularity, trending, average ratings not stored**
+  - They are aggregates of `watch_history` and `rating`, so they are computed in queries (see
+    [Ranking](#ranking)) instead of being stored on `content`, where they would duplicate the
+    activity rows and go stale.
+- **Candidate keys**
+  - They are real attributes, not imported ids. `content` has `content_id` (primary) and
+    `(title, content_type, release_date)`. `person` has `person_id` and `(name, date_of_birth)`.
+  - Every non-key attribute depends on the whole of each candidate key, so the surrogate keys add
     no dependency of their own (see [Natural keys](#natural-keys)).
-  - `payment.amount` isn't a copy of `subscription_plan.price_monthly`: prices change, a payment
-    records what was charged at the time.
+- **`payment.amount`**
+  - It is not a copy of `subscription_plan.price_monthly`. Prices change, and a payment records what
+    was charged at the time.
+- **Failed payments**
   - A failed payment still points at its `subscription` (the PENDING one for that checkout), so
-    `payment` never needs its own `user_id` / `plan_id` — those are reached through the subscription.
-- **Known limits of declarative constraints** (enforced in the API, or with a trigger):
-  only `SERIES` content may have seasons; a `watch_history.episode_id` must belong to the row's
-  `content_id`; at most 5 profiles per user.
+    `payment` never needs its own `user_id` / `plan_id`. Those are reached through the subscription.
+
+### Known limits of declarative constraints
+
+These rules cannot be expressed as plain table constraints. They are enforced in the API, or with a
+trigger (database code that runs automatically on writes):
+
+- Only `SERIES` content may have seasons.
+- A `watch_history.episode_id` must belong to the row's `content_id`.
+- At most 5 profiles per user.
 
 ## Domain names → column names
 
 Columns follow the field names in `src/types` (snake_case). Where the domain description used a
-longer name:
+longer name, this is the mapping (domain name, then the column):
 
-| Domain                                                    | Column                                                                             |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| USER.password, created_date                               | `users.password_hash`, `created_at`                                                |
-| PROFILE.profile_name                                      | `profile.name`                                                                     |
-| SUBSCRIPTION_PLAN.plan_name, price                        | `subscription_plan.name`, `price_monthly`                                          |
-| SUBSCRIPTION.subscription_status                          | `subscription.status`                                                              |
-| PAYMENT.transaction_ref_no, payment_status                | `payment.transaction_ref` (Razorpay `pay_…`), `status`                             |
-| GENRE.genre_name                                          | `genre.name`                                                                       |
-| CONTENT.duration                                          | `content.duration_minutes`                                                         |
-| CONTENT_CAST, CONTENT_DIRECTOR                            | `content_credit`, with `role` = `'ACTOR'` / `'DIRECTOR'`                           |
-| CONTENT_CAST.role_name                                    | `content_credit.character_name`                                                    |
-| WATCH_HISTORY.watch_datetime, progress, completion_status | `watched_at`, `progress_percent`; completion is derived (`progress_percent >= 90`) |
-| MY_LIST.date_added                                        | `my_list.added_at`                                                                 |
-| RATING.rating_value, rating_date                          | `rating.value`, `rated_at`                                                         |
+- USER.password, created_date -> `users.password_hash`, `created_at`
+- PROFILE.profile_name -> `profile.name`
+- SUBSCRIPTION_PLAN.plan_name, price -> `subscription_plan.name`, `price_monthly`
+- SUBSCRIPTION.subscription_status -> `subscription.status`
+- PAYMENT.transaction_ref_no, payment_status -> `payment.transaction_ref` (Razorpay `pay_…`), `status`
+- GENRE.genre_name -> `genre.name`
+- CONTENT.duration -> `content.duration_minutes`
+- CONTENT_CAST, CONTENT_DIRECTOR -> `content_credit`, with `role` = `'ACTOR'` / `'DIRECTOR'`
+- CONTENT_CAST.role_name -> `content_credit.character_name`
+- WATCH_HISTORY.watch_datetime, progress, completion_status -> `watched_at`, `progress_percent`;
+  completion is derived (`progress_percent >= 90`)
+- MY_LIST.date_added -> `my_list.added_at`
+- RATING.rating_value, rating_date -> `rating.value`, `rated_at`
 
 ## Drizzle notes
 
-We define the schema in TypeScript with Drizzle (`drizzle-orm/pg-core`) and generate SQL
-migrations with `drizzle-kit`, so the migration files stay plain PostgreSQL. Almost everything
-above maps directly:
+Drizzle is the TypeScript library we use to define the schema. We write it in TypeScript with
+`drizzle-orm/pg-core` and generate SQL migrations with `drizzle-kit`, so the migration files stay
+plain PostgreSQL. Almost everything above maps directly (SQL -> Drizzle):
 
-| SQL                                                                                    | Drizzle                                                                                                           |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `CREATE TYPE … AS ENUM`                                                                | `pgEnum()`                                                                                                        |
-| `GENERATED ALWAYS AS IDENTITY`                                                         | `integer().generatedAlwaysAsIdentity()`                                                                           |
-| CHECK constraints                                                                      | `check()` in the table's extra config                                                                             |
-| `lower(email)` / `lower(name)` unique indexes                                          | ``uniqueIndex().on(sql`lower(${t.email})`)``                                                                      |
-| partial unique index on `subscription`                                                 | ``uniqueIndex().on(t.userId).where(sql`…`)``                                                                      |
-| `UNIQUE NULLS NOT DISTINCT` (`watch_history`, the `content` and `person` natural keys) | `unique().on(…).nullsNotDistinct()`, e.g. `unique().on(t.title, t.contentType, t.releaseDate).nullsNotDistinct()` |
-| composite primary keys (`my_list`, `rating`, `recommendation`, …)                      | `primaryKey({ columns: [t.profileId, t.contentId] })`                                                             |
-| `interaction_score` view, `content_similarity` materialized view                       | `pgView()`, `pgMaterializedView()`                                                                                |
-| `maturity_of()` function                                                               | a custom migration; queries call it with ``sql`maturity_of(${content.ageRating})` ``                              |
+- `CREATE TYPE … AS ENUM` -> `pgEnum()`
+- `GENERATED ALWAYS AS IDENTITY` -> `integer().generatedAlwaysAsIdentity()`
+- CHECK constraints -> `check()` in the table's extra config
+- `lower(email)` / `lower(name)` unique indexes -> ``uniqueIndex().on(sql`lower(${t.email})`)``
+- partial unique index on `subscription` -> ``uniqueIndex().on(t.userId).where(sql`…`)``
+- `UNIQUE NULLS NOT DISTINCT` (`watch_history`, the `content` and `person` natural keys) ->
+  `unique().on(…).nullsNotDistinct()`, e.g.
+  `unique().on(t.title, t.contentType, t.releaseDate).nullsNotDistinct()`
+- composite primary keys (`my_list`, `rating`, `recommendation`, …) ->
+  `primaryKey({ columns: [t.profileId, t.contentId] })`
+- `interaction_score` view, `content_similarity` materialized view -> `pgView()`,
+  `pgMaterializedView()`
+- `maturity_of()` function -> a custom migration; queries call it with
+  ``sql`maturity_of(${content.ageRating})` ``
 
 Check every generated migration before applying it. Anything `drizzle-kit` doesn't emit the way we
-want goes into a custom migration (`drizzle-kit generate --custom`). The client
-(`src/server/db/index.ts`) is drizzle-orm over a node-postgres (`pg`) `Pool` on `DATABASE_URL`
-(a Neon connection string), so `db.transaction` works.
+want goes into a custom migration (`drizzle-kit generate --custom`).
+
+The client (`src/server/db/index.ts`) is drizzle-orm over a node-postgres (`pg`) `Pool` on
+`DATABASE_URL` (a Neon connection string), so `db.transaction` works.
 
 ## Still open
 
-- When `recommendation` is regenerated (after each activity, on Home load when older than N minutes, or nightly) and how often `content_similarity` is refreshed.
-- Weighted ranking (current plan) vs a small trained model — check with the teacher.
+- When `recommendation` is regenerated (after each activity, on Home load when older than N
+  minutes, or nightly) and how often `content_similarity` is refreshed.
+- Weighted ranking (current plan) vs a small trained model: check with the teacher.
 - Whether to keep the shorter column names above or switch to the domain's exact names.
