@@ -4,6 +4,7 @@ import { PAYMENT_MODE_LABELS } from "@/lib/constants";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { PaymentWithPlan, SubscriptionWithPlan } from "@/types";
 
+import { CancelSubscriptionButton } from "./cancel-subscription-button";
 import { PaymentStatusBadge, SubscriptionStatusBadge } from "./status-badges";
 
 /** Wide tables scroll sideways inside the card on small screens. */
@@ -41,7 +42,7 @@ function EmptyRow({ colSpan, children }: { colSpan: number; children: React.Reac
 
 export function SubscriptionHistory({ subscriptions }: { subscriptions: SubscriptionWithPlan[] }) {
   return (
-    <HistoryCard title="Subscriptions" description="Every plan this account has been on, newest first.">
+    <HistoryCard title="Subscriptions" description="Every checkout this account has started, newest first.">
       <Table className={TABLE_CLASS}>
         <TableHeader>
           <TableRow>
@@ -49,11 +50,14 @@ export function SubscriptionHistory({ subscriptions }: { subscriptions: Subscrip
             <TableHead>Started</TableHead>
             <TableHead>Ends</TableHead>
             <TableHead className="text-right">Status</TableHead>
+            <TableHead className="text-right">
+              <span className="sr-only">Actions</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {subscriptions.length === 0 ? (
-            <EmptyRow colSpan={4}>No subscriptions yet. Choose a plan above to start one.</EmptyRow>
+            <EmptyRow colSpan={5}>No subscriptions yet. Choose a plan above to start one.</EmptyRow>
           ) : (
             subscriptions.map((subscription) => (
               <TableRow key={subscription.subscriptionId}>
@@ -62,6 +66,11 @@ export function SubscriptionHistory({ subscriptions }: { subscriptions: Subscrip
                 <TableCell className="tabular-nums">{formatDate(subscription.endDate)}</TableCell>
                 <TableCell className="text-right">
                   <SubscriptionStatusBadge status={subscription.status} />
+                </TableCell>
+                <TableCell className="text-right">
+                  {(subscription.status === "PENDING" || subscription.status === "ACTIVE") && (
+                    <CancelSubscriptionButton subscriptionId={subscription.subscriptionId} />
+                  )}
                 </TableCell>
               </TableRow>
             ))

@@ -129,6 +129,11 @@ export const api = {
     request<{ user: User; subscription: SubscriptionWithPlan | null }>("/account", { cache: "no-store" }),
   /** Creates the Razorpay order; open Razorpay Checkout with the result. */
   startCheckout: (body: ChangePlanInput) => request<CheckoutOrder>("/account/subscriptions", { method: "POST", body }),
+  /** Cancels one of the user's own PENDING or ACTIVE subscriptions. */
+  cancelSubscription: (subscriptionId: number) =>
+    request<{ subscription: SubscriptionWithPlan }>(`/account/subscriptions/${subscriptionId}/cancel`, {
+      method: "POST",
+    }),
   /** Checkout's success-handler response, checked on the server. */
   verifyPayment: (body: VerifyPaymentInput) =>
     request<{ verified: true }>("/payments/verify", { method: "POST", body }),

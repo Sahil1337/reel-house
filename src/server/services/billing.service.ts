@@ -6,7 +6,7 @@
  *
  * Exports:
  *   listPlans · getPlan · getActiveSubscription · listSubscriptions · listPayments ·
- *   createPendingSubscription
+ *   createPendingSubscription · cancelSubscription
  *
  * Schema: docs/schema/SCHEMA.md "Account & billing" and "Payment flow". One subscription = one Razorpay order;
  * many payment rows (attempts) point at it. A user has many subscriptions over time, but only one
@@ -14,9 +14,23 @@
  */
 import "server-only";
 
-import { getMockDb, withPlan } from "@/server/mocks/db";
-import { NotFoundError } from "@/server/errors";
+import { ConflictError, NotFoundError } from "@/server/errors";
 import type { PaymentWithPlan, Subscription, SubscriptionPlan, SubscriptionWithPlan } from "@/types";
+import { db } from "../db";
+import { subscriptionPlan ,subscription, payment } from "../db/schema/billing";
+import { and, desc, eq, inArray } from "drizzle-orm";
+
+type SubscriptionRow = typeof subscription.$inferSelect;
+
+/** DB row (Date timestamps) → API shape (ISO strings). */
+function toSubscription(row: SubscriptionRow): Subscription {
+  return {
+    ...row,
+    startDate: row.startDate?.toISOString() ?? null,
+    endDate: row.endDate?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
 /**
  * Every subscription plan, cheapest first (public: landing page, sign-up, account).
@@ -32,10 +46,11 @@ import type { PaymentWithPlan, Subscription, SubscriptionPlan, SubscriptionWithP
  * Called by: GET /api/plans
  * Mock today: returns every plan in data/mock/plans.json order (not re-sorted).
  */
-export async function listPlans(): Promise<SubscriptionPlan[]> {
-  // TODO: implement
-  return getMockDb().plans;
-}
+export async function listPlans(): Promise<SubscriptionPlan[]> 
+{ const plans = await db .select() 
+  .from(subscriptionPlan) 
+  .orderBy((subscriptionPlan.priceMonthly)); 
+  return plans.map((plan) => ({ ...plan, priceMonthly: Number(plan.priceMonthly), })); }
 
 /**
  * One plan by id.
@@ -53,10 +68,14 @@ export async function listPlans(): Promise<SubscriptionPlan[]> {
  *   did not check and answered with amount 0).
  */
 export async function getPlan(planId: number): Promise<SubscriptionPlan> {
-  // TODO: implement
-  const plan = getMockDb().plans.find((entry) => entry.planId === planId);
-  if (!plan) throw new NotFoundError("Plan not found.");
-  return plan;
+  const [plan] = await db.select().from(subscriptionPlan) .where(eq(subscriptionPlan.planId, planId))
+
+    .limit(1);
+
+ if (!plan) {
+    throw new NotFoundError("Plan not found.");
+  }
+  return { ...plan, priceMonthly: Number(plan.priceMonthly) };
 }
 
 /**
@@ -79,40 +98,75 @@ export async function getPlan(planId: number): Promise<SubscriptionPlan> {
  * Called by: GET /api/account
  * Mock today: the first ACTIVE subscription of the user in data/mock/subscriptions.json, with its plan.
  */
-export async function getActiveSubscription(userId: number): Promise<SubscriptionWithPlan | null> {
-  // TODO: implement
-  const active = getMockDb().subscriptions.find(
-    (subscription) => subscription.userId === userId && subscription.status === "ACTIVE",
-  );
-  return active ? withPlan(active) : null;
-}
+export async function getActiveSubscription(
+  userId: number,
+): Promise<SubscriptionWithPlan | null> {
+  const [active] = await db
+    .select()
+    .from(subscription)
+    .innerJoin(
+      subscriptionPlan,
+      eq(subscription.planId, subscriptionPlan.planId),
+    )
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        eq(subscription.status, "ACTIVE"),
+      ),
+    )
+    .limit(1);
 
+  if (!active) {
+    return null;
+  }
+
+  return {
+    ...toSubscription(active.subscription),
+    plan: {
+      ...active.subscription_plan,
+      priceMonthly: Number(active.subscription_plan.priceMonthly),
+    },
+  };
+}
 /**
- * The user's subscription history, newest first. Checkouts that were never paid (PENDING, or CANCELLED
- * before a capture — start_date still NULL) are NOT billing history and are left out.
+ * The user's subscription history, newest first — every checkout, including ones never paid (PENDING:
+ * Checkout closed, payment failed or timed out) and ones the user cancelled.
  *
  * Steps:
- *   1. Select the user's subscriptions with a start_date, joined with the plan.
+ *   1. Select all of the user's subscriptions, joined with the plan.
  * SQL:
  *   SELECT s.*, p.*
  *   FROM subscription s
  *   JOIN subscription_plan p USING (plan_id)
- *   WHERE s.user_id = $1 AND s.start_date IS NOT NULL
- *   ORDER BY s.start_date DESC;
+ *   WHERE s.user_id = $1
+ *   ORDER BY s.created_at DESC;
  * Tables: subscription, subscription_plan
  * Keys/constraints relied on: CHECK (status = 'PENDING' OR (start_date IS NOT NULL AND end_date > start_date))
  *   — every paid subscription has dates; PENDING ones have none.
  * Transaction: no  ·  Idempotent: yes (read)
- * Edge cases: never paid → stays PENDING, is cancelled at the user's next checkout, never shown here.
+ * Edge cases: never paid → stays PENDING (start/end dates NULL) until paid or cancelled by the user.
  * Throws: nothing
  * Called by: GET /api/account/subscriptions
  * Mock today: every subscription of the user in file order (no start_date filter, no sort), with its plan.
  */
 export async function listSubscriptions(userId: number): Promise<SubscriptionWithPlan[]> {
-  // TODO: implement
-  return getMockDb()
-    .subscriptions.filter((subscription) => subscription.userId === userId)
-    .map(withPlan);
+  const rows = await db
+    .select()
+    .from(subscription)
+    .innerJoin(
+      subscriptionPlan,
+      eq(subscription.planId, subscriptionPlan.planId),
+    )
+    .where(eq(subscription.userId, userId))
+    .orderBy(desc(subscription.createdAt));
+
+  return rows.map((row) => ({
+    ...toSubscription(row.subscription),
+    plan: {
+      ...row.subscription_plan,
+      priceMonthly: Number(row.subscription_plan.priceMonthly),
+    },
+  }));
 }
 
 /**
@@ -138,58 +192,124 @@ export async function listSubscriptions(userId: number): Promise<SubscriptionWit
  * Mock today: payments of the user's subscriptions in file order, each with planName.
  */
 export async function listPayments(userId: number): Promise<PaymentWithPlan[]> {
-  // TODO: implement
-  const { subscriptions, payments } = getMockDb();
-  const mine = subscriptions.filter((subscription) => subscription.userId === userId).map(withPlan);
-  return payments.flatMap((payment) => {
-    const subscription = mine.find((entry) => entry.subscriptionId === payment.subscriptionId);
-    return subscription ? [{ ...payment, planName: subscription.plan.name }] : [];
-  });
+  const rows = await db
+    .select({
+      payment,
+      planName: subscriptionPlan.name,
+    })
+    .from(payment)
+    .innerJoin(
+      subscription,
+      eq(subscription.subscriptionId, payment.subscriptionId),
+    )
+    .innerJoin(
+      subscriptionPlan,
+      eq(subscriptionPlan.planId, subscription.planId),
+    )
+    .where(eq(subscription.userId, userId))
+    .orderBy(desc(payment.paymentDate));
+
+  return rows.map((row) => ({
+    ...row.payment,
+    amount: Number(row.payment.amount),
+    paymentDate: row.payment.paymentDate.toISOString(),
+    planName: row.planName,
+  }));
 }
 
 /**
  * Opens a checkout: a new PENDING subscription for the plan (which is the Razorpay order's local
- * counterpart). The subscription becomes ACTIVE later, when Razorpay reports the capture —
- * recordCapturedPayment in payments.service (via POST /api/payments/verify or the webhook).
+ * counterpart). Every click on checkout creates its own row. It becomes ACTIVE later, when Razorpay
+ * reports the capture — recordCapturedPayment in payments.service (via POST /api/payments/verify or the
+ * webhook). If Checkout is closed, the payment fails or times out, it stays PENDING (shown in history)
+ * until the user cancels it.
  *
- * Steps (ONE transaction):
- *   1. Cancel the user's earlier abandoned checkouts. (A capture that still arrives for one of them is
- *      honoured by recordCapturedPayment — the money was taken.)
- *   2. Insert the new PENDING row; start_date / end_date stay NULL until payment.
- *   Renewal instead: if the user's ACTIVE subscription is already on this plan, no new row — return that
- *   ACTIVE row; the renewal order's notes carry its subscription_id and a capture extends end_date.
- *   (Open point for the implementer: the old route listed "409 already ACTIVE on that plan (unless
- *   renewing)"; today the account page offers renewal, so the same plan is treated as a renewal.)
+ * Steps:
+ *   1. Insert the new PENDING row; start_date / end_date stay NULL until payment.
  * SQL:
- *   BEGIN;
- *   UPDATE subscription SET status = 'CANCELLED' WHERE user_id = $1 AND status = 'PENDING';
  *   INSERT INTO subscription (user_id, plan_id, status) VALUES ($1, $2, 'PENDING') RETURNING *;
- *   COMMIT;
- *   -- renewal check, before the UPDATE/INSERT:
- *   SELECT * FROM subscription WHERE user_id = $1 AND plan_id = $2 AND status = 'ACTIVE';
  * Tables: subscription
- * Keys/constraints relied on: CHECK (status = 'PENDING' OR (start_date IS NOT NULL AND end_date > start_date))
- *   — a PENDING row with NULL dates is legal; FK user_id / plan_id (ON DELETE RESTRICT);
- *   subscription_one_active_per_user is untouched (PENDING rows don't count).
- * Transaction: yes (db.transaction) · Idempotent: no (each call is a new checkout)
- * Edge cases: if creating the Razorpay order fails afterwards, the PENDING row is harmless — GET
- *   history filters on start_date and the next checkout cancels it. Nothing else is written here:
- *   payment rows are created by verify / the webhook, failed attempts included.
- * Throws: NotFoundError when planId or userId doesn't exist (FK violation); ConflictError only if the
- *   renewal rule above is tightened.
+ * Keys/constraints relied on: subscription_dates_check — a PENDING row with NULL dates is legal;
+ *   FK user_id / plan_id (ON DELETE RESTRICT); subscription_one_active_per_user is untouched (PENDING
+ *   rows don't count).
+ * Transaction: no (single statement) · Idempotent: no (each call is a new checkout)
+ * Edge cases: if creating the Razorpay order fails afterwards, the PENDING row stays and can be cancelled.
+ *   Nothing else is written here: payment rows are created by verify / the webhook, failed attempts included.
+ * Throws: NotFoundError when planId or userId doesn't exist (FK violation).
  * Called by: POST /api/account/subscriptions
- * Mock today: returns a PENDING row with id = (number of mock subscriptions + 1) and NULL dates;
- *   persists nothing.
  */
 export async function createPendingSubscription(userId: number, planId: number): Promise<Subscription> {
-  // TODO: implement
+  try {
+    const [created] = await db
+      .insert(subscription)
+      .values({ userId, planId, status: "PENDING" })
+      .returning();
+
+    return toSubscription(created);
+  } catch (error) {
+    const code = (error as { code?: string; cause?: { code?: string } }).code
+      ?? (error as { cause?: { code?: string } }).cause?.code;
+    if (code === "23503") {
+      throw new NotFoundError("Plan not found.");
+    }
+    throw error;
+  }
+}
+
+/**
+ * The user cancels one of their own subscriptions: an unpaid checkout (PENDING) or their current plan
+ * (ACTIVE). Dates are kept as they are (NULL for an unpaid one; the paid period for an ACTIVE one).
+ *
+ * Steps:
+ *   1. Update the row if it belongs to the user and is PENDING or ACTIVE.
+ *   2. Nothing updated → the row doesn't exist / isn't theirs (404) or is already CANCELLED / EXPIRED (409).
+ * SQL:
+ *   UPDATE subscription SET status = 'CANCELLED'
+ *   WHERE subscription_id = $2 AND user_id = $1 AND status IN ('PENDING', 'ACTIVE')
+ *   RETURNING *;
+ * Tables: subscription
+ * Keys/constraints relied on: PK subscription_id; subscription_dates_check (CANCELLED allows both
+ *   NULL dates and a paid period, so the dates can stay).
+ * Transaction: no (single statement) · Idempotent: no (a second call answers 409)
+ * Throws: NotFoundError("Subscription not found."); ConflictError when it is already CANCELLED or EXPIRED.
+ * Called by: POST /api/account/subscriptions/:subscriptionId/cancel
+ */
+export async function cancelSubscription(
+  userId: number,
+  subscriptionId: number,
+): Promise<SubscriptionWithPlan> {
+  const [cancelled] = await db
+    .update(subscription)
+    .set({ status: "CANCELLED" })
+    .where(
+      and(
+        eq(subscription.subscriptionId, subscriptionId),
+        eq(subscription.userId, userId),
+        inArray(subscription.status, ["PENDING", "ACTIVE"]),
+      ),
+    )
+    .returning();
+
+  if (!cancelled) {
+    const [existing] = await db
+      .select({ status: subscription.status })
+      .from(subscription)
+      .where(
+        and(
+          eq(subscription.subscriptionId, subscriptionId),
+          eq(subscription.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) {
+      throw new NotFoundError("Subscription not found.");
+    }
+    throw new ConflictError("This subscription can no longer be cancelled.", "NOT_CANCELLABLE");
+  }
+
   return {
-    subscriptionId: getMockDb().subscriptions.length + 1,
-    userId,
-    planId,
-    startDate: null,
-    endDate: null,
-    status: "PENDING",
-    createdAt: new Date().toISOString(),
+    ...toSubscription(cancelled),
+    plan: await getPlan(cancelled.planId),
   };
 }

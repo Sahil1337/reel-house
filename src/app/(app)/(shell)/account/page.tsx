@@ -24,6 +24,7 @@ export default async function AccountPage() {
       </header>
 
       <AccountPlan
+        key={subscription?.subscriptionId ?? "none"}
         user={user}
         details={<AccountDetailsCard user={user} profileCount={profiles.length} />}
         plans={plans}
