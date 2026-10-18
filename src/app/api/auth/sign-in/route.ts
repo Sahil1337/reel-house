@@ -16,7 +16,7 @@
  * src/server/services/users.service.ts.
  */
 import { handleError } from "@/app/api/_lib/http";
-import { verifyPassword } from "@/server/auth/password";
+import { DUMMY_HASH, verifyPassword } from "@/server/auth/password";
 import { startSession } from "@/server/auth/session";
 import { ServiceError, UnauthorizedError } from "@/server/errors";
 import { findUserCredentialsByEmail } from "@/server/services/users.service";
@@ -29,7 +29,11 @@ export async function POST(request: Request) {
     }
 
     const account = await findUserCredentialsByEmail(body.email);
-    if (!account || !(await verifyPassword(body.password, account.passwordHash))) {
+    const valid = account
+      ? await verifyPassword(body.password, account.passwordHash)
+      : !(await verifyPassword(body.password, DUMMY_HASH)); // runs dummy verify and yields false
+
+    if (!account || !valid) {
       throw new UnauthorizedError("That email and password don't match an account.");
     }
 
