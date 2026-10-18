@@ -67,9 +67,9 @@ Phase 4: Admin Content Management [DONE]
   └── 4.4 updateContent              (Metadata update with conflict detection) [DONE]
            │
            ▼
-Phase 5: Auth Hardening & Cleanup
-  ├── 5.1 Auth Hardening             (Dummy hash timing attack mitigation)
-  └── 5.2 Cleanup & Validation       (Purge mock imports, lint, build check)
+Phase 5: Auth Hardening & Cleanup [DONE]
+  ├── 5.1 Auth Hardening             (Dummy hash timing attack mitigation) [DONE]
+  └── 5.2 Cleanup & Validation       (Purge mock imports, lint, build check) [DONE]
 ```
 
 ---
