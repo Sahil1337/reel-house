@@ -99,6 +99,7 @@
 import "server-only";
 
 import { getMockDb, toHistoryItem, toSummary } from "@/server/mocks/db";
+import { isAllowedFor } from "@/lib/content/maturity";
 import { isCompleted } from "@/lib/content/progress";
 import type { Candidate, HomeBuild, HomeFeed, HomeRow, InteractionScores, Profile, RankedCandidate } from "@/types";
 
@@ -162,19 +163,26 @@ const REASONS = {
  *   fallback (cold start); a failed store must not fail the request — log and still return the feed.
  * Throws: nothing of its own (the route has already 404'd an unknown profile).
  * Called by: GET /api/profiles/:profileId/home (and the Home page via src/lib/api/server.ts getHome)
- * Mock today: no pipeline. Fixed slices of the catalogue (18 each: top-picks 0, top-rated-genre 18,
- *   because-you-liked 36, trending 300, genre-picks 318), continue-watching from the profile's
- *   history filtered with !isCompleted, because-you-liked anchored on history[0] (only when the
- *   profile has history), genres[0]/genres[1] as the top-rated/genre-picks genres, hero = the first
- *   catalogue title, generatedAt = now.
+ * Mock today: no pipeline. Fixed slices of the titles the profile's maturity level allows (18 each:
+ *   top-picks 0, top-rated-genre 18, because-you-liked 36, trending at 60% of the allowed list,
+ *   genre-picks right after it), continue-watching from the profile's history filtered with
+ *   !isCompleted, because-you-liked anchored on history[0] (only when the profile has history),
+ *   genres[0]/genres[1] as the top-rated/genre-picks genres, hero = the first allowed title,
+ *   generatedAt = now. Every title (history included) is checked with isAllowedFor, as the real
+ *   pipeline does in rankCandidates.
  */
 export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
   // TODO: implement — until then the shelves are fixed slices of the catalogue.
-  const { contents, watchHistory, genres } = getMockDb();
+  const { contents: catalogue, watchHistory, genres } = getMockDb();
+  const contents = catalogue.filter((content) => isAllowedFor(profile.maturityLevel, content.maturityLevel));
   const slice = (start: number) =>
     contents.slice(start, start + ROW_SIZE).map((content) => ({ content: toSummary(content) }));
+  const trendingStart = Math.floor(contents.length * 0.6);
 
-  const history = watchHistory.filter((row) => row.profileId === profile.profileId).map(toHistoryItem);
+  const history = watchHistory
+    .filter((row) => row.profileId === profile.profileId)
+    .map(toHistoryItem)
+    .filter((item) => isAllowedFor(profile.maturityLevel, item.content.maturityLevel));
   const rows: HomeRow[] = [
     {
       id: "continue-watching",
@@ -212,7 +220,7 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
       kind: "trending",
       title: "Trending now",
       reason: REASONS.trending,
-      items: slice(300),
+      items: slice(trendingStart),
     },
     {
       id: "top-rated-genre",
@@ -226,7 +234,7 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
       kind: "genre-picks",
       title: `${genres[1].name} for you`,
       reason: REASONS.genreWatched(genres[1].name),
-      items: slice(318),
+      items: slice(trendingStart + ROW_SIZE),
     },
   );
 

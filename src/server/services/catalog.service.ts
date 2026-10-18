@@ -22,6 +22,7 @@
  */
 import "server-only";
 
+import { isAllowedFor } from "@/lib/content/maturity";
 import { findContent, getMockDb, toSummary } from "@/server/mocks/db";
 import { NotFoundError } from "@/server/errors";
 import type { ContentDetail, ContentSummary, ContentType, Genre, MaturityLevel } from "@/types";
@@ -94,11 +95,16 @@ export interface ContentSearch {
  *   sorts last; the route has already clamped `limit` to 1–100 and dropped an unknown type.
  * Throws: nothing.
  * Called by: GET /api/content
- * Mock today: returns the first `limit` catalogue items as summaries, ignoring q / type / genre / maturity.
+ * Mock today: returns the first `limit` catalogue items the maturity level allows, as summaries, ignoring
+ *   q / type / genre.
  */
 export async function searchContent(query: ContentSearch): Promise<ContentSummary[]> {
   // TODO: implement
-  return getMockDb().contents.slice(0, query.limit).map(toSummary);
+  const { maturityLevel } = query;
+  return getMockDb()
+    .contents.filter((content) => maturityLevel === null || isAllowedFor(maturityLevel, content.maturityLevel))
+    .slice(0, query.limit)
+    .map(toSummary);
 }
 
 /**
@@ -237,7 +243,7 @@ export async function listGenres(): Promise<Genre[]> {
  *   for titles the same viewers rated low, which pushes them out.
  * Throws: NotFoundError "Title not found." when the id doesn't exist.
  * Called by: GET /api/content/:contentId/similar
- * Mock today: the first `limit` other titles in catalogue order (default 12), ignoring maturity.
+ * Mock today: the first `limit` other titles in catalogue order (default 12) that the maturity level allows.
  */
 export async function getSimilarTitles(
   contentId: number,
@@ -247,7 +253,11 @@ export async function getSimilarTitles(
   // TODO: implement
   const content = await getContentDetail(contentId);
   return getMockDb()
-    .contents.filter((other) => other.contentId !== content.contentId && maturityLevel !== undefined)
+    .contents.filter(
+      (other) =>
+        other.contentId !== content.contentId &&
+        (maturityLevel === null || isAllowedFor(maturityLevel, other.maturityLevel)),
+    )
     .slice(0, limit)
     .map(toSummary);
 }
