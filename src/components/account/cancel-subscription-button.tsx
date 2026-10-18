@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api/client";
 
-/** Cancels a PENDING or ACTIVE subscription, then re-renders the account page with the new status. */
+/** Cancels an ACTIVE subscription, then re-renders the account page with the new status. */
 export function CancelSubscriptionButton({
   subscriptionId,
   label = "Cancel",

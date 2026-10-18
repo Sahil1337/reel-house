@@ -68,7 +68,7 @@ export function SubscriptionHistory({ subscriptions }: { subscriptions: Subscrip
                   <SubscriptionStatusBadge status={subscription.status} />
                 </TableCell>
                 <TableCell className="text-right">
-                  {(subscription.status === "PENDING" || subscription.status === "ACTIVE") && (
+                  {subscription.status === "ACTIVE" && (
                     <CancelSubscriptionButton subscriptionId={subscription.subscriptionId} />
                   )}
                 </TableCell>

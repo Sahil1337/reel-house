@@ -1,10 +1,10 @@
 /**
  * POST /api/account/subscriptions/:subscriptionId/cancel — the signed-in user cancels one of their own
- * subscriptions (an unpaid PENDING checkout or their ACTIVE plan).
+ * subscriptions — only an ACTIVE plan.
  *
  * Request:  the `session` cookie; no body
  * Response: 200 { subscription: SubscriptionWithPlan } (status CANCELLED)
- *           401 signed out · 404 not theirs / unknown · 409 already CANCELLED or EXPIRED
+ *           401 signed out · 404 not theirs / unknown · 409 not ACTIVE (e.g. PENDING)
  *
  * Calls: cancelSubscription (billing.service)
  */

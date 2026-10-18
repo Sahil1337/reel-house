@@ -18,7 +18,7 @@ import { ConflictError, NotFoundError } from "@/server/errors";
 import type { PaymentWithPlan, Subscription, SubscriptionPlan, SubscriptionWithPlan } from "@/types";
 import { db } from "../db";
 import { subscriptionPlan ,subscription, payment } from "../db/schema/billing";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 type SubscriptionRow = typeof subscription.$inferSelect;
 
@@ -257,21 +257,21 @@ export async function createPendingSubscription(userId: number, planId: number):
 }
 
 /**
- * The user cancels one of their own subscriptions: an unpaid checkout (PENDING) or their current plan
- * (ACTIVE). Dates are kept as they are (NULL for an unpaid one; the paid period for an ACTIVE one).
+ * The user cancels their current plan (ACTIVE). Its paid dates are kept. Unpaid checkouts (PENDING) can't
+ * be cancelled — they stay PENDING.
  *
  * Steps:
- *   1. Update the row if it belongs to the user and is PENDING or ACTIVE.
- *   2. Nothing updated → the row doesn't exist / isn't theirs (404) or is already CANCELLED / EXPIRED (409).
+ *   1. Update the row if it belongs to the user and is ACTIVE.
+ *   2. Nothing updated → the row doesn't exist / isn't theirs (404) or isn't ACTIVE (409).
  * SQL:
  *   UPDATE subscription SET status = 'CANCELLED'
- *   WHERE subscription_id = $2 AND user_id = $1 AND status IN ('PENDING', 'ACTIVE')
+ *   WHERE subscription_id = $2 AND user_id = $1 AND status = 'ACTIVE'
  *   RETURNING *;
  * Tables: subscription
  * Keys/constraints relied on: PK subscription_id; subscription_dates_check (CANCELLED allows both
- *   NULL dates and a paid period, so the dates can stay).
+ *   a paid period, so the dates can stay).
  * Transaction: no (single statement) · Idempotent: no (a second call answers 409)
- * Throws: NotFoundError("Subscription not found."); ConflictError when it is already CANCELLED or EXPIRED.
+ * Throws: NotFoundError("Subscription not found."); ConflictError when it isn't ACTIVE.
  * Called by: POST /api/account/subscriptions/:subscriptionId/cancel
  */
 export async function cancelSubscription(
@@ -285,7 +285,7 @@ export async function cancelSubscription(
       and(
         eq(subscription.subscriptionId, subscriptionId),
         eq(subscription.userId, userId),
-        inArray(subscription.status, ["PENDING", "ACTIVE"]),
+        eq(subscription.status, "ACTIVE"),
       ),
     )
     .returning();
@@ -305,7 +305,7 @@ export async function cancelSubscription(
     if (!existing) {
       throw new NotFoundError("Subscription not found.");
     }
-    throw new ConflictError("This subscription can no longer be cancelled.", "NOT_CANCELLABLE");
+    throw new ConflictError("Only an active plan can be cancelled.", "NOT_CANCELLABLE");
   }
 
   return {

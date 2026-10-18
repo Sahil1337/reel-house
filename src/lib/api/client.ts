@@ -129,7 +129,7 @@ export const api = {
     request<{ user: User; subscription: SubscriptionWithPlan | null }>("/account", { cache: "no-store" }),
   /** Creates the Razorpay order; open Razorpay Checkout with the result. */
   startCheckout: (body: ChangePlanInput) => request<CheckoutOrder>("/account/subscriptions", { method: "POST", body }),
-  /** Cancels one of the user's own PENDING or ACTIVE subscriptions. */
+  /** Cancels the user's ACTIVE subscription. */
   cancelSubscription: (subscriptionId: number) =>
     request<{ subscription: SubscriptionWithPlan }>(`/account/subscriptions/${subscriptionId}/cancel`, {
       method: "POST",
