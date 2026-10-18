@@ -62,7 +62,7 @@ export interface HomeRow {
    * buildHomeRows from the row kind plus context (genre, person, anchor title); never stored.
    */
   reason: string;
-  /** "because-you-liked" only: the title the row is anchored on (from content_similarity, not stored). */
+  /** "because-you-liked" only: the title the row is anchored on (computed per request, not stored). */
   anchor?: { contentId: number; title: string };
   items: RowItem[];
 }

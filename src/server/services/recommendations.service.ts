@@ -13,7 +13,6 @@
  *   rankCandidates(candidates, profile)           → RankedCandidate[]   stage 3
  *   buildHomeRows(ranked, profile, scores)        → HomeBuild           stage 4
  *   storeRecommendations(profileId, ranked, rows) → void                stage 5
- *   refreshContentSimilarity()                    → void                nightly job
  *
  * ─── The recommendation pipeline ────────────────────────────────────────────────────────
  * Four stages, each a query (or view) over the activity tables, so they can be built and
@@ -570,27 +569,4 @@ export async function storeRecommendations(
   void profileId;
   void ranked;
   void rows;
-}
-
-/**
- * Refreshes content_similarity (the item-item kNN). Run nightly by a scheduled job, not per request.
- *
- * Steps:
- *   1. REFRESH MATERIALIZED VIEW CONCURRENTLY — readers keep using the old data meanwhile (needs
- *      the unique index content_similarity_pair_key).
- * SQL:
- *   REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity;
- * Tables: content_similarity (built from interaction_score)  ·  Keys/constraints relied on:
- *   content_similarity_pair_key (a CONCURRENTLY refresh requires a unique index)
- * Transaction: no (the statement is atomic but cannot run inside a transaction block)  ·
- *   Idempotent: yes
- * Edge cases: a first-ever refresh with CONCURRENTLY needs the view populated once without it
- *   (`REFRESH MATERIALIZED VIEW content_similarity;`), done by the seed.
- * Throws: nothing of its own.
- * Called by: nothing yet — the nightly cron endpoint/job (scheduling is part of the open
- *   refresh-policy decision).
- * Mock today: does nothing.
- */
-export async function refreshContentSimilarity(): Promise<void> {
-  // TODO: implement
 }

@@ -6,7 +6,7 @@ Read [README.md](README.md) first (architecture, setup, conventions, curl testin
 
 Good to know before you start:
 
-- The Neon database already has the migrations and the seeded data: 3 plans, 2 subscriptions, 8 payments, plus the 2 users and 3 profiles they belong to. Your queries can run against real rows as soon as you write them.
+- The Neon database already has the migration and the seeded data: 3 plans, 2 subscriptions, 8 payments, plus the 2 users and 3 profiles they belong to. Your queries can run against real rows as soon as you write them.
 - The mock files now also hold 7 extra demo customers and 8 more subscriptions, so the admin Subscriptions table has something to show. Re-seeding Neon from `data/mock` picks them up.
 - Plan 3 "Premiere" deliberately has no subscription. It is the one the admin can delete.
 - Accounts, sessions, profiles and onboarding are Tejasva's (A). You use them through the guards.
@@ -79,7 +79,7 @@ Work through these in order. Each step builds on the one before it.
 
 - [ ] **0. Prep**: branch `feat/billing-payments`, own Neon branch in `.env`, `npm run dev`, `db:studio` to look at `subscription_plan`, `subscription`, `payment`. Sign in as the seeded users (mock-backed guards are fine until Tejasva's merge).
 - [ ] **1. Billing reads**: `listPlans`, `getPlan`, `getActiveSubscription`, `listSubscriptions`, `listPayments`. Account page shows seeded plan and history.
-- [x] **2. Schema CHECK fixed** (migration `0002`): `subscription_dates_check` now allows a CANCELLED row without dates, so cancelling unpaid checkouts works.
+- [x] **2. Schema CHECK fixed** (now in `drizzle/0000_schema.sql`): `subscription_dates_check` allows a CANCELLED row without dates, so cancelling unpaid checkouts works.
 - [ ] **3. `createPendingSubscription`** (transaction, renewal rule).
 - [ ] **4. Razorpay test-mode setup** (section 7.7): keys, webhook secret, tunnel.
 - [ ] **5. `createRazorpayOrder`**: real order; the UI now opens Checkout (`keyId` non-null).
@@ -178,7 +178,7 @@ WHERE s.user_id = $1 AND s.status = 'ACTIVE';
 
 - Tables and keys: `subscription`, `subscription_plan`. The partial UNIQUE index `subscription_one_active_per_user ON subscription (user_id) WHERE status = 'ACTIVE'` means at most one row.
 - Transaction: no. Idempotent (safe to repeat with the same result): yes.
-- An ACTIVE row whose `end_date` has passed is still returned until an expiry job (or the next capture) flips it to EXPIRED. The page shows `end_date`. This is an open decision: lazy expiry, README 9.8.
+- An ACTIVE row whose `end_date` has passed is still returned until an expiry job (or the next capture) flips it to EXPIRED. The page shows `end_date`. This is an open decision: lazy expiry, README 9.6.
 - The `s.*, p.*` select returns duplicate column names (`plan_id`). Select explicit columns or use the query builder.
 
 **Errors:** None.
@@ -210,7 +210,7 @@ ORDER BY s.start_date DESC;
 **Rules to respect:**
 
 - Tables and keys: `subscription`, `subscription_plan`.
-- CHECK `subscription_dates_check`: every paid subscription has dates; PENDING ones have none; PENDING or CANCELLED-before-payment rows have none (migration `0002`).
+- CHECK `subscription_dates_check`: every paid subscription has dates; PENDING ones have none; PENDING or CANCELLED-before-payment rows have none (defined in `drizzle/0000_schema.sql`).
 - A subscription that was never paid stays PENDING, is cancelled at the next checkout, and is never shown here.
 
 **Errors:** None.
@@ -265,7 +265,7 @@ ORDER BY pay.payment_date DESC;
 
 **Renewal instead:** if the user's ACTIVE subscription is already on this plan, no new row is created. The function returns that ACTIVE row; the renewal order's notes carry its `subscription_id`, and a capture extends `end_date`.
 
-Open point from the service: the old route comment said "409 already ACTIVE on that plan (unless renewing)". Since the account page offers renewal, the same plan is treated as a renewal. Update the route comment (README 9.7).
+Open point from the service: the old route comment said "409 already ACTIVE on that plan (unless renewing)". Since the account page offers renewal, the same plan is treated as a renewal. Update the route comment (README 9.5).
 
 **SQL:**
 
@@ -281,7 +281,7 @@ COMMIT;
 **Rules to respect:**
 
 - Tables and keys: `subscription`.
-- CHECK `subscription_dates_check`: a PENDING row with NULL dates is legal, and so is a CANCELLED row that was never paid (migration `0002`).
+- CHECK `subscription_dates_check`: a PENDING row with NULL dates is legal, and so is a CANCELLED row that was never paid (defined in `drizzle/0000_schema.sql`).
 - FK `user_id` / `plan_id` are `ON DELETE RESTRICT` (the database refuses to delete a referenced parent row). `subscription_one_active_per_user` is untouched, because PENDING rows do not count.
 - Transaction: yes (`db.transaction`). Idempotent: no, each call is a new checkout.
 - If creating the Razorpay order fails afterwards, the PENDING row is harmless (history filters on `start_date`, and the next checkout cancels it).
@@ -633,7 +633,7 @@ Other conventions:
 - Money arrives as `numeric` strings, so use `Number()` in the mapper (README 3.6).
 - Counts: plain `COUNT(*)`; the pg parser in src/server/db/index.ts already returns it as a number.
 
-Constraints these functions rely on (a copy of the real definitions from `drizzle/0002_fix_subscription_check.sql`):
+Constraints these functions rely on (a copy of the real definitions from `drizzle/0000_schema.sql`):
 
 ```sql
 -- subscription_dates_check
@@ -1074,12 +1074,12 @@ Route details behind the diagram:
 These are the special cases `recordCapturedPayment` has to handle.
 
 - **Amount check:** `payment.amount (paise) === round(price_monthly x 100)` and `currency === 'INR'`. Otherwise keep the payment row, do not activate, and log for a manual refund.
-- **Plan change:** a new PENDING subscription on the new plan. On capture the old ACTIVE row becomes CANCELLED with `end_date = now()` (remaining days are not prorated: README 9.9), and the new one becomes ACTIVE for one month.
+- **Plan change:** a new PENDING subscription on the new plan. On capture the old ACTIVE row becomes CANCELLED with `end_date = now()` (remaining days are not prorated: README 9.7), and the new one becomes ACTIVE for one month.
 - **Renewal:** same plan. `createPendingSubscription` returns the ACTIVE row, and the order's `notes.subscription_id` is that id. Capture sets `end_date = GREATEST(end_date, now()) + 1 month`.
 - **Abandoned checkout:** stays PENDING. The user's next checkout cancels it. It is never listed in billing history. A late capture for it (money taken) is still honoured.
 - **Failed attempt:** a `payment` row with status FAILED; the subscription stays PENDING. The user may retry in the same Checkout (same order, new `pay_` id).
-- **Refunds:** `REFUNDED` exists in the enum but nothing writes it (README 9.10).
-- **Expiry:** nothing flips ACTIVE to EXPIRED automatically (README 9.8).
+- **Refunds:** `REFUNDED` exists in the enum but nothing writes it (README 9.8).
+- **Expiry:** nothing flips ACTIVE to EXPIRED automatically (README 9.6).
 
 ### 7.6 Signature algorithms
 

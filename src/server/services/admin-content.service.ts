@@ -205,9 +205,7 @@ export async function getContentDeletionImpact(contentId: number): Promise<Conte
  *   content_genre, content_credit, season (and episode through season_id), watch_history (by content_id and
  *   by episode_id), my_list, rating and recommendation. NOT deleted: person rows (a person credited only on
  *   this title stays as an orphan; nothing in the app lists people on their own) and genre rows
- *   (genres are shared lookups, a genre may end up with no titles). The content_similarity materialized view
- *   keeps the removed title's rows until its next REFRESH, but every query that serves them joins content,
- *   so they never surface.
+ *   (genres are shared lookups, a genre may end up with no titles).
  * Transaction: no (one statement)  ·  Idempotent: no, but safe to repeat: the second call finds nothing and
  *   answers 404, with nothing else changed.
  * Edge cases: a profile watching the title loses its watch_history row, my_list entry and rating, and

@@ -52,7 +52,7 @@ CREATE TABLE "subscription" (
 	"end_date" timestamp with time zone,
 	"status" "subscription_status" DEFAULT 'PENDING' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "subscription_dates_check" CHECK ("subscription"."status" = 'PENDING' OR ("subscription"."start_date" IS NOT NULL AND "subscription"."end_date" > "subscription"."start_date"))
+	CONSTRAINT "subscription_dates_check" CHECK (("subscription"."status" IN ('PENDING', 'CANCELLED') AND "subscription"."start_date" IS NULL AND "subscription"."end_date" IS NULL) OR ("subscription"."start_date" IS NOT NULL AND "subscription"."end_date" > "subscription"."start_date"))
 );
 --> statement-breakpoint
 CREATE TABLE "subscription_plan" (
@@ -202,4 +202,18 @@ CREATE INDEX "content_credit_person_idx" ON "content_credit" USING btree ("perso
 CREATE INDEX "content_genre_genre_idx" ON "content_genre" USING btree ("genre_id");--> statement-breakpoint
 CREATE INDEX "rating_content_idx" ON "rating" USING btree ("content_id");--> statement-breakpoint
 CREATE INDEX "watch_history_recent_idx" ON "watch_history" USING btree ("profile_id","watched_at" DESC NULLS FIRST);--> statement-breakpoint
-CREATE INDEX "recommendation_rank_idx" ON "recommendation" USING btree ("profile_id","relevance_score" DESC NULLS FIRST);
+CREATE INDEX "recommendation_rank_idx" ON "recommendation" USING btree ("profile_id","relevance_score" DESC NULLS FIRST);--> statement-breakpoint
+-- Maturity is derived from the certificate whenever a query needs it, never stored.
+-- Catalogue queries filter with  maturity_of(c.age_rating) <= p.maturity_level  (enum order).
+CREATE FUNCTION maturity_of(code VARCHAR) RETURNS maturity_level
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+           WHEN code IN ('G', 'PG', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG') THEN 'KIDS'
+           WHEN code IN ('PG-13', 'TV-14')                           THEN 'TEEN'
+           WHEN code IN ('R', 'NC-17', 'NR', 'TV-MA')                THEN 'ADULT'
+           ELSE 'TEEN'                                               -- NULL: no certificate
+         END::maturity_level
+$$;
+--> statement-breakpoint
+-- Search (catalog.service searchContent) matches titles and names accent-insensitively.
+CREATE EXTENSION IF NOT EXISTS unaccent;

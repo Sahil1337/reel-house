@@ -1,17 +1,5 @@
 import { relations } from "drizzle-orm";
-import {
-  doublePrecision,
-  index,
-  integer,
-  numeric,
-  pgMaterializedView,
-  pgTable,
-  pgView,
-  primaryKey,
-  real,
-  timestamp,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { index, integer, pgTable, primaryKey, real, timestamp, varchar } from "drizzle-orm/pg-core";
 import { recStatus } from "./enums";
 import { profile } from "./accounts";
 import { content } from "./catalog";
@@ -47,17 +35,3 @@ export const recommendationRelations = relations(recommendation, ({ one }) => ({
   }),
 }));
 
-// The view and the materialized view are created by the custom migration
-// (drizzle/*_functions_and_views.sql), which holds their SQL. They are declared
-// here with .existing() only so queries are typed.
-export const interactionScore = pgView("interaction_score", {
-  profileId: integer().notNull(),
-  contentId: integer().notNull(),
-  score: numeric({ mode: "number" }).notNull(), // SUM(numeric) -> numeric
-}).existing();
-
-export const contentSimilarity = pgMaterializedView("content_similarity", {
-  contentA: integer().notNull(),
-  contentB: integer().notNull(),
-  score: doublePrecision().notNull(),
-}).existing();

@@ -1,5 +1,5 @@
 {
-  "id": "0e4c9a4f-6c4b-4ad6-ba97-0fbef18acb4a",
+  "id": "f0fde20a-29f7-469c-b1a9-2162a578f4a0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -484,7 +484,7 @@
       "checkConstraints": {
         "subscription_dates_check": {
           "name": "subscription_dates_check",
-          "value": "\"subscription\".\"status\" = 'PENDING' OR (\"subscription\".\"start_date\" IS NOT NULL AND \"subscription\".\"end_date\" > \"subscription\".\"start_date\")"
+          "value": "(\"subscription\".\"status\" IN ('PENDING', 'CANCELLED') AND \"subscription\".\"start_date\" IS NULL AND \"subscription\".\"end_date\" IS NULL) OR (\"subscription\".\"start_date\" IS NOT NULL AND \"subscription\".\"end_date\" > \"subscription\".\"start_date\")"
         }
       },
       "isRLSEnabled": false
@@ -1616,60 +1616,7 @@
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {
-    "public.interaction_score": {
-      "columns": {
-        "profileId": {
-          "name": "profileId",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "contentId": {
-          "name": "contentId",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "score": {
-          "name": "score",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "name": "interaction_score",
-      "schema": "public",
-      "isExisting": true,
-      "materialized": false
-    },
-    "public.content_similarity": {
-      "columns": {
-        "contentA": {
-          "name": "contentA",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "contentB": {
-          "name": "contentB",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "score": {
-          "name": "score",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "name": "content_similarity",
-      "schema": "public",
-      "isExisting": true,
-      "materialized": true
-    }
-  },
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

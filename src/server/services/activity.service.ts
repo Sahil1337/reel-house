@@ -226,8 +226,8 @@ export async function removeFromMyList(profileId: number, contentId: number): Pr
  * Tables: rating  ·  Keys/constraints relied on: PK (profile_id, content_id) (one rating per title),
  *   CHECK (value BETWEEN 1 AND 5), FK content_id → content.
  * Transaction: no  ·  Idempotent: yes (same value → same row; rated_at moves)
- * Edge cases: nothing else needs updating: interaction_score is a view and always fresh; the
- *   recommendation table catches up on the next refresh.
+ * Edge cases: nothing else needs updating: Home reads rating directly, so the next Home load
+ *   reflects the new value.
  * Throws: NotFoundError when the title doesn't exist.
  * Called by: PUT /api/profiles/:profileId/ratings/:contentId
  * Mock today: returns { profileId, contentId, value, ratedAt: now }, persists nothing.

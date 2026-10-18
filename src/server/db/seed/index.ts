@@ -2,10 +2,9 @@
  * Reelhouse database seed.
  *
  * Loads the TMDB snapshot (data/tmdb/*.json) and the demo accounts/activity
- * (data/mock/*.json) into Postgres, then refreshes the content_similarity
- * materialized view. Generated identity ids are never inserted: rows are
- * inserted, their new ids read back with RETURNING, and snapshot/mock keys are
- * mapped to those ids in memory.
+ * (data/mock/*.json) into Postgres. Generated identity ids are never inserted:
+ * rows are inserted, their new ids read back with RETURNING, and snapshot/mock
+ * keys are mapped to those ids in memory.
  *
  * WARNING: this RESETS the database. All 17 tables are TRUNCATEd with
  * RESTART IDENTITY CASCADE first. Use on dev databases only. Everything runs
@@ -77,8 +76,6 @@ async function main() {
       await seedBilling(tx, data, userById);
       await seedActivity(tx, data, { profileById, contentByKey, episodeByKey });
       console.log("  recommendation             0 (generated later by the pipeline)");
-      await tx.execute(sql`REFRESH MATERIALIZED VIEW content_similarity`);
-      console.log("  content_similarity         refreshed");
     });
     console.log("Notes:");
     for (const n of notes) console.log(`  - ${n}`);
