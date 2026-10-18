@@ -3,11 +3,15 @@
 Everything the three of us need to agree on before (and while) we replace the stub service bodies
 with real PostgreSQL code. Read this file first, then your own file:
 
-| Who   | File                                                                           | Services you own                                                                           |
-| ----- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| **A** | [person-a-catalogue-admin.md](person-a-catalogue-admin.md)                     | `catalog.service`, `admin.service`                                                         |
-| **B** | [person-b-accounts-billing-payments.md](person-b-accounts-billing-payments.md) | `users.service`, `profiles.service`, `billing.service`, `payments.service`, auth hardening |
-| **C** | [person-c-activity-recommendations.md](person-c-activity-recommendations.md)   | `activity.service`, `recommendations.service`                                              |
+| Who            | File                                                                         | Services you own                                                                                                                          |
+| -------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **A**: Tejasva | [person-a-catalogue-admin-accounts.md](person-a-catalogue-admin-accounts.md) | `users.service`, `profiles.service`, `catalog.service`, `admin.service`, the auth guards in `src/app/api/_lib/auth.ts` and auth hardening |
+| **B**: Yash    | [person-b-billing-payments.md](person-b-billing-payments.md)                 | `billing.service`, `payments.service` (plans, subscriptions, the full Razorpay flow)                                                      |
+| **C**: Sahil   | [person-c-activity-recommendations.md](person-c-activity-recommendations.md) | `activity.service`, `recommendations.service`                                                                                             |
+
+**Order matters:** Tejasva (A) lands `users` + `profiles` + the guard swap first (day 1 to 2), because every guarded
+route depends on them. Yash (B) and Sahil (C) keep working against the mock-backed guards until Tejasva merges
+them. Tejasva also writes `profile_genre_preference` (onboarding), which Sahil's cold start reads.
 
 The schema itself is [`../schema/SCHEMA.md`](../schema/SCHEMA.md) (source of truth for tables, constraints, ranking
 formulas and the payment flow). The Drizzle schema in `src/server/db/schema/` and the two migrations in
@@ -125,8 +129,8 @@ src/
 
 | Piece                                                                                 | State                                                                                                                                                                                                                                                                         |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sign-in / sign-out / `GET /api/auth/me` route logic                                   | **Real**: signed cookie `session=<userId>.<HMAC-SHA256>` (`SESSION_SECRET`), scrypt hashing and `timingSafeEqual` verification. The _lookups_ behind them (`findUserCredentialsByEmail`, `findUserById`) are still mock-backed (Person B)                                     |
-| `src/proxy.ts`, route guards in `src/app/api/_lib/auth.ts`                            | Real; they call `findUserById` / `getOwnedProfile` which are stubs                                                                                                                                                                                                            |
+| Sign-in / sign-out / `GET /api/auth/me` route logic                                   | **Real**: signed cookie `session=<userId>.<HMAC-SHA256>` (`SESSION_SECRET`), scrypt hashing and `timingSafeEqual` verification. The _lookups_ behind them (`findUserCredentialsByEmail`, `findUserById`) are still mock-backed (Tejasva, A)                                   |
+| `src/proxy.ts`, route guards in `src/app/api/_lib/auth.ts`                            | Real; they call `findUserById` / `getOwnedProfile` which are stubs until Tejasva (A) merges the real user and profile functions; Yash (B) and Sahil (C) keep using the mock-backed guards until then                                                                          |
 | `GET /api/admin/tmdb/search`, `GET /api/admin/tmdb/:type/:tmdbId`                     | **Real** live TMDB calls (`TMDB_API_KEY`) and real SQL-preview generation (`src/lib/sql/import-title.ts`); only `markInCatalog` / `findCatalogueId` (database lookups) are stubs                                                                                              |
 | `src/server/db` (Drizzle schema, `db`), `drizzle/` migrations 0000 and 0001, the seed | **Real and already applied to Neon**: tables, enums, `maturity_of()`, `interaction_score`, `content_similarity` exist and the database is **seeded**; nothing queries them yet (the services still return mocks), so a service can read real rows the moment you implement it |
 | Every other service function                                                          | **Stub**: `// TODO: implement`, returns mock data from `src/server/mocks`, persists nothing                                                                                                                                                                                   |
@@ -150,7 +154,7 @@ src/
 data, so nothing needs creating):
 
 1. Get a `DATABASE_URL` for **your own Neon branch** (2.1; ask whoever owns the Neon project to create the branch, or create it from `main` yourself).
-2. `cp .env.example .env` and fill it in (2.2): at least `DATABASE_URL`, `SESSION_SECRET`; `TMDB_API_KEY` for the admin pages; the three `RAZORPAY_*` values only for Person B.
+2. `cp .env.example .env` and fill it in (2.2): at least `DATABASE_URL`, `SESSION_SECRET`; `TMDB_API_KEY` for the admin pages; the three `RAZORPAY_*` values only for Yash (B).
 3. `npm install`.
 4. `npm run dev`. Services you implement can query real rows immediately.
 5. Only if you **reset or break your branch**: `npm run db:migrate` (schema) then `npm run db:seed` (data; it resets the tables first, so re-running always gives the same known state).
@@ -552,7 +556,7 @@ Sign-in clears `profileId`, so always pass it again (or any `profileId` you want
 | `GET /api/account/payments`            | `curl -b jar $BASE/api/account/payments`                                                                                                                                  | 8 payments (FAILED included)                                      |
 | `POST /api/account/subscriptions`      | `curl -b jar -H 'content-type: application/json' -d '{"planId":3}' $BASE/api/account/subscriptions`                                                                       | 201 `CheckoutOrder`; unknown plan 404; `{"planId":"x"}` 422       |
 | `POST /api/payments/verify`            | `curl -b jar -H 'content-type: application/json' -d '{"razorpay_order_id":"order_x","razorpay_payment_id":"pay_x","razorpay_signature":"bad"}' $BASE/api/payments/verify` | 400 `INVALID_SIGNATURE` (real impl)                               |
-| `POST /api/payments/webhook`           | signed body, see Person B's file (openssl snippet)                                                                                                                        | 200 `{}` / 400                                                    |
+| `POST /api/payments/webhook`           | signed body, see Yash's file (openssl snippet)                                                                                                                            | 200 `{}` / 400                                                    |
 | `GET /api/profiles`                    | `curl -b jar $BASE/api/profiles`                                                                                                                                          | 3 profiles                                                        |
 | `POST /api/profiles`                   | `curl -b jar -H 'content-type: application/json' -d '{"name":"Dev","avatar":"star","maturityLevel":"TEEN"}' $BASE/api/profiles`                                           | 201; 6th -> 409 `PROFILE_LIMIT`; same name -> 409                 |
 | `GET/PATCH/DELETE /api/profiles/1`     | `curl -b jar -X PATCH -H 'content-type: application/json' -d '{"name":"Riya S"}' $BASE/api/profiles/1`; profile 99 or another user's -> 404                               | 200 / 204 / 404 / 409 (last profile)                              |
@@ -583,46 +587,46 @@ account (404), and every write route twice (idempotency).
 
 Guards: **none** = public; **U** = `requireUser`; **P** = `requireOwnedProfile(:profileId)`; **A** = `requireAdmin`;
 **S** = `getSelectedProfile` (optional maturity filter). Status codes list what the route's contract documents
-(plus 401 for guarded routes). Owner = who implements the service function.
+(plus 401 for guarded routes). Owner = who implements the service function: Tejasva (A) owns auth, profiles and onboarding plus the catalogue and admin routes, Yash (B) owns plans, account and payments, Sahil (C) owns the profile-scoped activity routes (home, progress, history, my-list, ratings, titles).
 
-| Method | Path                                          | Guard            | Calls                                                                                          | Status codes                                | Owner |
-| ------ | --------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------- | ----- |
-| POST   | `/api/auth/sign-in`                           | none             | `findUserCredentialsByEmail`, `verifyPassword`, `startSession`                                 | 200, 400, 401                               | B     |
-| POST   | `/api/auth/sign-up`                           | none             | `hashPassword`, `createUser`                                                                   | 201, 409, 422                               | B     |
-| POST   | `/api/auth/sign-out`                          | none             | `endSession`                                                                                   | 204                                         | B     |
-| GET    | `/api/auth/me`                                | U                | `findUserById` (via `requireUser`)                                                             | 200, 401                                    | B     |
-| GET    | `/api/plans`                                  | none             | `listPlans`                                                                                    | 200                                         | B     |
-| GET    | `/api/account`                                | U                | `getActiveSubscription`                                                                        | 200, 401                                    | B     |
-| GET    | `/api/account/subscriptions`                  | U                | `listSubscriptions`                                                                            | 200, 401                                    | B     |
-| POST   | `/api/account/subscriptions`                  | U                | `getPlan`, `createPendingSubscription`, `createRazorpayOrder`                                  | 201, 401, 404, 409, 422, 502, 503           | B     |
-| GET    | `/api/account/payments`                       | U                | `listPayments`                                                                                 | 200, 401                                    | B     |
-| POST   | `/api/payments/verify`                        | U                | `verifyPaymentSignature`, `fetchPayment`, `recordCapturedPayment`                              | 200, 400, 401, 422, 502, 503                | B     |
-| POST   | `/api/payments/webhook`                       | none (signature) | `verifyWebhookSignature`, `parseWebhookEvent`, `recordFailedPayment` / `recordCapturedPayment` | 200, 400, 500                               | B     |
-| GET    | `/api/profiles`                               | U                | `listProfiles`                                                                                 | 200, 401                                    | B     |
-| POST   | `/api/profiles`                               | U                | `createProfile`                                                                                | 201, 401, 409, 422                          | B     |
-| GET    | `/api/profiles/:profileId`                    | P                | `getOwnedProfile`                                                                              | 200, 401, 404                               | B     |
-| PATCH  | `/api/profiles/:profileId`                    | P                | `updateProfile`                                                                                | 200, 401, 404, 409, 422                     | B     |
-| DELETE | `/api/profiles/:profileId`                    | P                | `deleteProfile` (+ clears `profileId` cookie)                                                  | 204, 401, 404, 409                          | B     |
-| GET    | `/api/profiles/:profileId/onboarding`         | P                | `getGenrePreferences`                                                                          | 200, 401, 404                               | B     |
-| PUT    | `/api/profiles/:profileId/onboarding`         | P                | `saveGenrePreferences`                                                                         | 200, 401, 404, 422                          | B     |
-| GET    | `/api/genres`                                 | none             | `listGenres`                                                                                   | 200                                         | A     |
-| GET    | `/api/content`                                | S                | `searchContent`                                                                                | 200                                         | A     |
-| GET    | `/api/content/:contentId`                     | none             | `getContentDetail`                                                                             | 200, 404                                    | A     |
-| GET    | `/api/content/:contentId/similar`             | S                | `getSimilarTitles`                                                                             | 200, 404                                    | A     |
-| GET    | `/api/admin/dashboard`                        | A                | `getDashboard`                                                                                 | 200, 401, 403                               | A     |
-| GET    | `/api/admin/tmdb/search`                      | A                | TMDB live + `markInCatalog`                                                                    | 200, 400, 401, 403, 502, 503                | A     |
-| GET    | `/api/admin/tmdb/:type/:tmdbId`               | A                | TMDB live + `findCatalogueId` + `buildImportScript`                                            | 200, 400, 401, 403, 404, 502, 503           | A     |
-| POST   | `/api/admin/content/import`                   | A                | (TODO fetch title) + `importTitle`                                                             | 201, 200, 400, 401, 403, 404, 500, 502, 503 | A     |
-| GET    | `/api/profiles/:profileId/home`               | P                | `getHomeFeed`                                                                                  | 200, 401, 404                               | C     |
-| POST   | `/api/profiles/:profileId/progress`           | P                | `recordProgress`                                                                               | 200, 401, 404, 422                          | C     |
-| GET    | `/api/profiles/:profileId/history`            | P                | `listHistory`                                                                                  | 200, 401, 404                               | C     |
-| DELETE | `/api/profiles/:profileId/history/:historyId` | P                | `removeHistoryEntry`                                                                           | 204, 401, 404                               | C     |
-| GET    | `/api/profiles/:profileId/my-list`            | P                | `listMyList`                                                                                   | 200, 401, 404                               | C     |
-| POST   | `/api/profiles/:profileId/my-list`            | P                | `addToMyList`                                                                                  | 201, 401, 404, 422                          | C     |
-| DELETE | `/api/profiles/:profileId/my-list/:contentId` | P                | `removeFromMyList`                                                                             | 200, 401, 404                               | C     |
-| PUT    | `/api/profiles/:profileId/ratings/:contentId` | P                | `rateTitle`                                                                                    | 200, 401, 404, 422                          | C     |
-| DELETE | `/api/profiles/:profileId/ratings/:contentId` | P                | `removeRating`                                                                                 | 204, 401, 404                               | C     |
-| GET    | `/api/profiles/:profileId/titles/:contentId`  | P                | `getTitleActivity`                                                                             | 200, 401, 404                               | C     |
+| Method | Path                                          | Guard            | Calls                                                                                          | Status codes                                | Owner       |
+| ------ | --------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------- |
+| POST   | `/api/auth/sign-in`                           | none             | `findUserCredentialsByEmail`, `verifyPassword`, `startSession`                                 | 200, 400, 401                               | Tejasva (A) |
+| POST   | `/api/auth/sign-up`                           | none             | `hashPassword`, `createUser`                                                                   | 201, 409, 422                               | Tejasva (A) |
+| POST   | `/api/auth/sign-out`                          | none             | `endSession`                                                                                   | 204                                         | Tejasva (A) |
+| GET    | `/api/auth/me`                                | U                | `findUserById` (via `requireUser`)                                                             | 200, 401                                    | Tejasva (A) |
+| GET    | `/api/plans`                                  | none             | `listPlans`                                                                                    | 200                                         | Yash (B)    |
+| GET    | `/api/account`                                | U                | `getActiveSubscription`                                                                        | 200, 401                                    | Yash (B)    |
+| GET    | `/api/account/subscriptions`                  | U                | `listSubscriptions`                                                                            | 200, 401                                    | Yash (B)    |
+| POST   | `/api/account/subscriptions`                  | U                | `getPlan`, `createPendingSubscription`, `createRazorpayOrder`                                  | 201, 401, 404, 409, 422, 502, 503           | Yash (B)    |
+| GET    | `/api/account/payments`                       | U                | `listPayments`                                                                                 | 200, 401                                    | Yash (B)    |
+| POST   | `/api/payments/verify`                        | U                | `verifyPaymentSignature`, `fetchPayment`, `recordCapturedPayment`                              | 200, 400, 401, 422, 502, 503                | Yash (B)    |
+| POST   | `/api/payments/webhook`                       | none (signature) | `verifyWebhookSignature`, `parseWebhookEvent`, `recordFailedPayment` / `recordCapturedPayment` | 200, 400, 500                               | Yash (B)    |
+| GET    | `/api/profiles`                               | U                | `listProfiles`                                                                                 | 200, 401                                    | Tejasva (A) |
+| POST   | `/api/profiles`                               | U                | `createProfile`                                                                                | 201, 401, 409, 422                          | Tejasva (A) |
+| GET    | `/api/profiles/:profileId`                    | P                | `getOwnedProfile`                                                                              | 200, 401, 404                               | Tejasva (A) |
+| PATCH  | `/api/profiles/:profileId`                    | P                | `updateProfile`                                                                                | 200, 401, 404, 409, 422                     | Tejasva (A) |
+| DELETE | `/api/profiles/:profileId`                    | P                | `deleteProfile` (+ clears `profileId` cookie)                                                  | 204, 401, 404, 409                          | Tejasva (A) |
+| GET    | `/api/profiles/:profileId/onboarding`         | P                | `getGenrePreferences`                                                                          | 200, 401, 404                               | Tejasva (A) |
+| PUT    | `/api/profiles/:profileId/onboarding`         | P                | `saveGenrePreferences`                                                                         | 200, 401, 404, 422                          | Tejasva (A) |
+| GET    | `/api/genres`                                 | none             | `listGenres`                                                                                   | 200                                         | Tejasva (A) |
+| GET    | `/api/content`                                | S                | `searchContent`                                                                                | 200                                         | Tejasva (A) |
+| GET    | `/api/content/:contentId`                     | none             | `getContentDetail`                                                                             | 200, 404                                    | Tejasva (A) |
+| GET    | `/api/content/:contentId/similar`             | S                | `getSimilarTitles`                                                                             | 200, 404                                    | Tejasva (A) |
+| GET    | `/api/admin/dashboard`                        | A                | `getDashboard`                                                                                 | 200, 401, 403                               | Tejasva (A) |
+| GET    | `/api/admin/tmdb/search`                      | A                | TMDB live + `markInCatalog`                                                                    | 200, 400, 401, 403, 502, 503                | Tejasva (A) |
+| GET    | `/api/admin/tmdb/:type/:tmdbId`               | A                | TMDB live + `findCatalogueId` + `buildImportScript`                                            | 200, 400, 401, 403, 404, 502, 503           | Tejasva (A) |
+| POST   | `/api/admin/content/import`                   | A                | (TODO fetch title) + `importTitle`                                                             | 201, 200, 400, 401, 403, 404, 500, 502, 503 | Tejasva (A) |
+| GET    | `/api/profiles/:profileId/home`               | P                | `getHomeFeed`                                                                                  | 200, 401, 404                               | Sahil (C)   |
+| POST   | `/api/profiles/:profileId/progress`           | P                | `recordProgress`                                                                               | 200, 401, 404, 422                          | Sahil (C)   |
+| GET    | `/api/profiles/:profileId/history`            | P                | `listHistory`                                                                                  | 200, 401, 404                               | Sahil (C)   |
+| DELETE | `/api/profiles/:profileId/history/:historyId` | P                | `removeHistoryEntry`                                                                           | 204, 401, 404                               | Sahil (C)   |
+| GET    | `/api/profiles/:profileId/my-list`            | P                | `listMyList`                                                                                   | 200, 401, 404                               | Sahil (C)   |
+| POST   | `/api/profiles/:profileId/my-list`            | P                | `addToMyList`                                                                                  | 201, 401, 404, 422                          | Sahil (C)   |
+| DELETE | `/api/profiles/:profileId/my-list/:contentId` | P                | `removeFromMyList`                                                                             | 200, 401, 404                               | Sahil (C)   |
+| PUT    | `/api/profiles/:profileId/ratings/:contentId` | P                | `rateTitle`                                                                                    | 200, 401, 404, 422                          | Sahil (C)   |
+| DELETE | `/api/profiles/:profileId/ratings/:contentId` | P                | `removeRating`                                                                                 | 204, 401, 404                               | Sahil (C)   |
+| GET    | `/api/profiles/:profileId/titles/:contentId`  | P                | `getTitleActivity`                                                                             | 200, 401, 404                               | Sahil (C)   |
 
 Notes: `/api/**` is skipped by `src/proxy.ts`, so API routes answer 401 themselves. The old
 `GET /api/profiles/:profileId/onboarding/candidates` route was removed (onboarding is genre picks only).
@@ -737,10 +741,10 @@ Phase 1 is done together, before anyone starts Phase 2. The design is `../schema
 ### 8.1 Branches and PRs
 
 - `main` is always deployable and migrated. Each person works on a feature branch
-  (`feat/catalogue-admin`, `feat/accounts-billing`, `feat/activity-recs`; Phase 1 on `feat/schema`) and
+  (`feat/catalogue-admin-accounts`, `feat/billing-payments`, `feat/activity-recs`; Phase 1 on `feat/schema`) and
   uses **their own Neon branch** (`DATABASE_URL`).
 - Small PRs into `main`, ideally one service function (or one route group) per PR, each with the curl
-  commands used to verify it in the description. One reviewer from the other two (rotate), who runs the
+  commands used to verify it in the description. One reviewer from the other two (rotate; Tejasva's guard-swap and auth-hardening PRs are reviewed by both Yash and Sahil), who runs the
   curl checks against their own Neon branch.
 - A function is "done" only when its checklist item in the person file is ticked (section "Definition of
   done" there): SQL as specified, typed errors, mock import removed for that function, curl checks pass.
@@ -748,16 +752,16 @@ Phase 1 is done together, before anyone starts Phase 2. The design is `../schema
 
 ### 8.2 Shared files (change only through a PR everyone sees)
 
-| Files                                                              | Rule                                                                                                                     |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `src/server/db/**` (schema, client) and `drizzle/**`               | Schema PRs are serialised (section 2.7). The schema owner is whoever opened the PR; all three review                     |
-| `docs/schema/SCHEMA.md`                                            | Updated in the same PR as the schema change                                                                              |
-| `src/server/errors/index.ts`                                       | New error classes only by agreement                                                                                      |
-| `src/app/api/_lib/*` (`auth.ts`, `http.ts`, `tmdb.ts`)             | Route-wide behaviour: all three review                                                                                   |
-| `src/types/*`                                                      | A response shape change updates the type, the route's top comment, `src/lib/api/*` and the frontend usage in the same PR |
-| `src/lib/constants/index.ts`, `src/lib/content/*`, `src/lib/sql/*` | Shared with the UI; review by someone not the author                                                                     |
-| `package.json` / lockfile                                          | One dependency PR at a time (avoid lockfile conflicts)                                                                   |
-| Route top comments                                                 | They _are_ the HTTP contract: change code and comment together                                                           |
+| Files                                                              | Rule                                                                                                                                                               |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/server/db/**` (schema, client) and `drizzle/**`               | Schema PRs are serialised (section 2.7). The schema owner is whoever opened the PR; all three review                                                               |
+| `docs/schema/SCHEMA.md`                                            | Updated in the same PR as the schema change                                                                                                                        |
+| `src/server/errors/index.ts`                                       | New error classes only by agreement                                                                                                                                |
+| `src/app/api/_lib/*` (`auth.ts`, `http.ts`, `tmdb.ts`)             | Route-wide behaviour: all three review. `auth.ts` (the guards) and `src/server/auth/*`, `src/server/session/*` are Tejasva's (A); Yash and Sahil review any change |
+| `src/types/*`                                                      | A response shape change updates the type, the route's top comment, `src/lib/api/*` and the frontend usage in the same PR                                           |
+| `src/lib/constants/index.ts`, `src/lib/content/*`, `src/lib/sql/*` | Shared with the UI; review by someone not the author                                                                                                               |
+| `package.json` / lockfile                                          | One dependency PR at a time (avoid lockfile conflicts)                                                                                                             |
+| Route top comments                                                 | They _are_ the HTTP contract: change code and comment together                                                                                                     |
 
 ### 8.3 Review rules
 
@@ -765,21 +769,22 @@ Reviewers check, in order: (1) matches the service JSDoc / this guide (SQL, erro
 idempotency); (2) every query filters by owner; (3) no `Response`/HTTP in services, no SQL in routes;
 (4) money/time/enums conventions (section 3); (5) mock import removed, nothing else broken (`npm run lint`,
 `npm run build`); (6) curl evidence in the PR. Whoever merges a schema PR applies the migration to the shared
-`main` Neon branch and tells the others to `db:migrate`.
+`main` Neon branch and tells the others to `db:migrate`. A PR that makes `findUserById` / `getOwnedProfile` real (the guard swap) is announced to Yash and Sahil the moment it merges, since their routes move off the mock-backed guards then.
 
 ### 8.4 Suggested timeline
 
-| When                    | Who   | What                                                                                                                                                |
-| ----------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Day 1 (together, 2-3 h) | A+B+C | Section 7: review `SCHEMA.md` and the open items in 7.3, create the per-person Neon branches (migrations and seed are already applied on `main`)    |
-| Day 1-2                 | B, C  | Create your Neon branches from the already-seeded `main`; read your specs and start writing code against the seeded ids                             |
-| Day 2-5                 | A     | catalogue reads (`listGenres`, `getContentDetail`, `searchContent`), then admin (`markInCatalog`, `findCatalogueId`, `getDashboard`, `importTitle`) |
-| Day 2-5                 | B     | `findUserById`, `findUserCredentialsByEmail`, `createUser`, `listProfiles`/`getOwnedProfile`, profile CRUD, onboarding, plans/account reads         |
-| Day 2-5                 | C     | `activity.service` (my list, ratings, progress, history, title activity), then `interaction_score` checks                                           |
-| Day 6-8                 | B     | Razorpay: order, verify, webhook, test-mode run with a tunnel; auth hardening                                                                       |
-| Day 6-9                 | C     | recommendation pipeline stage by stage; `content_similarity` refresh; refresh policy                                                                |
-| Day 6-8                 | A     | `getSimilarTitles` (needs C's `content_similarity` data), index/perf pass, dashboard polish                                                         |
-| Day 9-10                | all   | integration: UI flows end to end, delete `src/server/mocks`, README cleanup, report/demo script                                                     |
+| When                    | Who                  | What                                                                                                                                                                                                                                                             |
+| ----------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Day 1 (together, 2-3 h) | Tejasva, Yash, Sahil | Section 7: review `SCHEMA.md` and the open items in 7.3, create the per-person Neon branches (migrations and seed are already applied on `main`)                                                                                                                 |
+| Day 1-2                 | Tejasva (A)          | **Accounts first:** `findUserById`, `findUserCredentialsByEmail`, `getOwnedProfile`, `listProfiles`, then `createUser` + sign-up session, profile CRUD, onboarding (`getGenrePreferences`, `saveGenrePreferences`); merge the guard swap and tell Yash and Sahil |
+| Day 1-2                 | Yash (B), Sahil (C)  | Create your Neon branches from the already-seeded `main`; read your specs and start writing code against the seeded ids, using the mock-backed guards until Tejasva merges                                                                                       |
+| Day 2-5                 | Tejasva (A)          | catalogue reads (`listGenres`, `getContentDetail`, `searchContent`), then admin (`markInCatalog`, `findCatalogueId`, `getDashboard`, `importTitle`)                                                                                                              |
+| Day 2-5                 | Yash (B)             | billing reads (`listPlans`, `getPlan`, `getActiveSubscription`, `listSubscriptions`, `listPayments`), `createPendingSubscription`, Razorpay test-mode setup                                                                                                      |
+| Day 2-5                 | Sahil (C)            | `activity.service` (my list, ratings, progress, history, title activity), then `interaction_score` checks                                                                                                                                                        |
+| Day 6-8                 | Yash (B)             | Razorpay: order, verify, webhook, test-mode run with a tunnel                                                                                                                                                                                                    |
+| Day 6-9                 | Sahil (C)            | recommendation pipeline stage by stage; `content_similarity` refresh; refresh policy                                                                                                                                                                             |
+| Day 6-8                 | Tejasva (A)          | `getSimilarTitles` (needs Sahil's `content_similarity` data), auth hardening (dummy hash, rate limit, hashing and session decisions), index/perf pass, dashboard polish                                                                                          |
+| Day 9-10                | all                  | integration: UI flows end to end, delete `src/server/mocks`, README cleanup, report/demo script                                                                                                                                                                  |
 
 ---
 
@@ -791,10 +796,10 @@ Each has a recommended default; implement the default unless the team decides ot
 2. **`content_similarity` refresh.** _Default:_ `REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity` after the seed and nightly. First ever refresh must be non-concurrent (`REFRESH MATERIALIZED VIEW content_similarity;`) on a populated view. Mechanism: an npm script now (`db:refresh-similarity`), a CRON_SECRET-guarded route for Vercel Cron if/when deployed. Nothing calls `refreshContentSimilarity()` yet. Owner: C.
 3. **Ranking model:** weighted blend (current) vs a small trained model: confirm with the teacher; no code depends on the answer yet.
 4. **Column names:** keep the short snake_case names (current) or switch to the domain's exact ones.
-5. **Sessions:** stateless signed cookie (today) vs a `session` table (revocation, sign-out everywhere, expiry). Default: keep the cookie for the demo; add the table only if time allows. Owner: B.
-6. **Password hashing:** keep Node scrypt (acceptable, no dependency, `timingSafeEqual`) with a tunable cost, or move to argon2id/bcrypt; either way keep the stored format versioned (`scrypt$...` prefix lets both coexist). Owner: B.
-7. **Same-plan checkout:** the route documents "409 already ACTIVE on that plan (unless renewing)"; `createPendingSubscription` treats the same plan as a **renewal** (returns the ACTIVE row, no 409). Default: renewal; update the route comment. Owner: B.
-8. **Subscription expiry:** nothing flips ACTIVE rows past `end_date` to EXPIRED. Default: lazy expiry inside `getActiveSubscription` (`UPDATE ... SET status='EXPIRED' WHERE user_id = $1 AND status='ACTIVE' AND end_date < now()` before the select) or treat `end_date < now()` as no plan; a nightly job is optional. Owner: B.
+5. **Sessions:** stateless signed cookie (today) vs a `session` table (revocation, sign-out everywhere, expiry). Default: keep the cookie for the demo; add the table only if time allows. Owner: Tejasva (A).
+6. **Password hashing:** keep Node scrypt (acceptable, no dependency, `timingSafeEqual`) with a tunable cost, or move to argon2id/bcrypt; either way keep the stored format versioned (`scrypt$...` prefix lets both coexist). Owner: Tejasva (A).
+7. **Same-plan checkout:** the route documents "409 already ACTIVE on that plan (unless renewing)"; `createPendingSubscription` treats the same plan as a **renewal** (returns the ACTIVE row, no 409). Default: renewal; update the route comment. Owner: Yash (B).
+8. **Subscription expiry:** nothing flips ACTIVE rows past `end_date` to EXPIRED. Default: lazy expiry inside `getActiveSubscription` (`UPDATE ... SET status='EXPIRED' WHERE user_id = $1 AND status='ACTIVE' AND end_date < now()` before the select) or treat `end_date < now()` as no plan; a nightly job is optional. Owner: Yash (B).
 9. **Plan change proration:** a capture on a new plan cancels the old ACTIVE row at `now()` (remaining days are lost). Default: accept for the project; document it.
 10. **Refunds:** `payment_status` has REFUNDED but no code path writes it (`refund.processed` is not handled). Default: out of scope; the admin can refund in the Razorpay dashboard.
 11. **Unsupported payment methods** (`emi`, `paylater`): ignore + log vs extend `payment_mode`. Default: ignore + log.

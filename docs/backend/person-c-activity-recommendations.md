@@ -1,6 +1,6 @@
-# Person C: activity and recommendations
+# Person C: Sahil — activity & recommendations
 
-You own **what a profile does** (watch progress, History, My List, ratings, the title-page state) and **what
+Sahil, you own **what a profile does** (watch progress, History, My List, ratings, the title-page state) and **what
 Home shows because of it** (the recommendation pipeline). Read [README.md](README.md) first (architecture,
 setup, conventions, curl testing); this file is the complete spec for your two services and the pipeline
 behind them. Schema: [`../schema/SCHEMA.md`](../schema/SCHEMA.md) ("Viewing activity", "Recommendations", "Ranking"). The
@@ -10,7 +10,7 @@ materialized view) and the seeded data, so you can run every query below against
 ## Table of contents
 
 1. [Scope](#1-scope)
-2. [Dependencies on A and B, and what to stub](#2-dependencies-on-a-and-b-and-what-to-stub)
+2. [Dependencies on A, and what to stub](#2-dependencies-on-a-and-what-to-stub)
 3. [Ordered checklist](#3-ordered-checklist)
 4. [`activity.service.ts`](#4-activityservicets)
 5. [`recommendations.service.ts`](#5-recommendationsservicets)
@@ -43,7 +43,7 @@ materialized view) and the seeded data, so you can run every query below against
 
 Tables you own: `watch_history`, `my_list`, `rating`, `recommendation`. You read: `interaction_score` (view),
 `content_similarity` (materialized view), `profile_genre_preference`, `profile`, `content`, `content_genre`, `genre`,
-`content_credit`, `person`, `season`, `episode`. Onboarding itself (`PUT .../onboarding`) is B's; you only read what it
+`content_credit`, `person`, `season`, `episode`. Onboarding itself (`PUT .../onboarding`) is Tejasva's (A); you only read what it
 stores (`profile_genre_preference`, `profile.onboarded_at`).
 
 **Completed is not a column.** A `watch_history` row is completed when `progress_percent >= 90` (SQL) /
@@ -54,17 +54,17 @@ always the signed-in user's profile. Still filter every query by `profile_id`.
 
 ---
 
-## 2. Dependencies on A and B, and what to stub
+## 2. Dependencies on A, and what to stub
 
-| You need                                                                | From                       | Until it lands                                                                                                                        |
-| ----------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `requireOwnedProfile` -> `getOwnedProfile`, `findUserById`              | B                          | The mock lookups find the seeded profiles 1-3 (user 1) because the seed uses the same ids. Test only with those until B lands         |
-| `getContentDetail(contentId)` (existence check in `getTitleActivity`)   | A (`catalog.service`)      | The mock catalogue has the same 500 ids; works unchanged                                                                              |
-| Catalogue rows (`content`, `content_genre`, credits, seasons, episodes) | seeded                     | No stub needed                                                                                                                        |
-| `getSimilarTitles` SQL (for "Because you liked X")                      | A                          | You can copy the SQL (A's file section 4.5) into your own query returning `item_sim` and `content_sim` separately; nothing blocks you |
-| `profile_genre_preference` / `onboarded_at` writes                      | B (`saveGenrePreferences`) | The seed has picks for profiles 1 and 2 (profile 3 has none: cold start without picks)                                                |
+| You need                                                                | From                                | Until it lands                                                                                                                                                                                     |
+| ----------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requireOwnedProfile` -> `getOwnedProfile`, `findUserById`              | A (Tejasva)                         | The mock lookups find the seeded profiles 1-3 (user 1) because the seed uses the same ids. Keep working against the mock-backed guards and test only with those until Tejasva merges the real ones |
+| `getContentDetail(contentId)` (existence check in `getTitleActivity`)   | A (Tejasva): `catalog.service`      | The mock catalogue has the same 500 ids; works unchanged                                                                                                                                           |
+| Catalogue rows (`content`, `content_genre`, credits, seasons, episodes) | seeded                              | No stub needed                                                                                                                                                                                     |
+| `getSimilarTitles` SQL (for "Because you liked X")                      | A (Tejasva)                         | You can copy the SQL (Tejasva's file section 7.5) into your own query returning `item_sim` and `content_sim` separately; nothing blocks you                                                        |
+| `profile_genre_preference` / `onboarded_at` writes                      | A (Tejasva): `saveGenrePreferences` | The seed has picks for profiles 1 and 2 (profile 3 has none: cold start without picks)                                                                                                             |
 
-Who depends on you: A's `getSimilarTitles` reads `content_similarity`, which you keep fresh; the dashboard's
+Who depends on you: Tejasva's (A) `getSimilarTitles` reads `content_similarity`, which you keep fresh; the dashboard's
 `mostWatched` / the popularity ranking read the `watch_history` rows you write.
 
 ---
@@ -94,7 +94,7 @@ Types: `WatchHistory { historyId, profileId, contentId, episodeId | null, watche
 `HistoryItem = WatchHistory & { content: ContentSummary; episode: (Episode & { seasonNumber }) | null }`,
 `MyListItem = ContentSummary & { addedAt }`, `Rating { profileId, contentId, value, ratedAt }`,
 `ProgressInput { contentId, episodeId | null, progressPercent }`, `TitleActivity { inMyList, rating, resume }`.
-`ContentSummary` needs `genres` (use the `json_agg` subquery from A's `searchContent`, copied) and
+`ContentSummary` needs `genres` (use the `json_agg` subquery from Tejasva's (A) `searchContent`, copied) and
 `maturityLevel` (`maturity_of(c.age_rating)`).
 
 ### 4.1 `recordProgress(profileId: number, input: ProgressInput): Promise<WatchHistory>`
@@ -968,7 +968,7 @@ curl -b jar $BASE/api/profiles/3/home | jq '.rows[].id'        # Mini: KIDS only
 
 Check, per profile: no row repeats a title the profile finished; Mini (KIDS) never sees PG-13+ items; rows have `reason`; `because-you-liked` rows carry `anchor`;
 the same call twice within 15 minutes returns the same `generatedAt` (served from `recommendation`); rating a title then reloading Home changes it (`generated_at < latest activity`).
-Create a brand-new profile (`POST /api/profiles`, B) and complete onboarding with 3 genres: Home must be the popular titles of those genres with the cold-start reasons.
+Create a brand-new profile (`POST /api/profiles`, Tejasva) and complete onboarding with 3 genres: Home must be the popular titles of those genres with the cold-start reasons.
 The seed is small (15 history rows, 7 ratings), so to exercise kNN add activity for several profiles via curl, run the refresh (7.2), then recheck.
 
 ### 8.3 SQL spot checks
@@ -1034,4 +1034,4 @@ Do not run the pipeline in `getTitleActivity`.
 - [ ] UI works: Home (hero, rows, reasons, match chips, continue-watching progress), the player's progress sync, History, My List, rating control, title page Play/Resume label.
 - [ ] `WEIGHTS` and the view agree; any retune is a migration.
 - [ ] `npm run lint` and `npm run build` pass; route header comments updated where behaviour changed (e.g. `DELETE .../history/:historyId` is 404 on a second call).
-- [ ] PR(s) reviewed by A or B with curl evidence.
+- [ ] PR(s) reviewed by Tejasva or Yash with curl evidence.
