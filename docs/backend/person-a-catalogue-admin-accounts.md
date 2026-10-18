@@ -88,8 +88,8 @@ The catalogue is created **only** by `importTitle`. `updateContent` and `deleteC
 
 ### Tables you read and write
 
-- **Read**: `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode`, `watch_history` (search popularity). For the dashboard: `users`, `subscription`, `subscription_plan`, `payment`. For onboarding: `genre`. For the admin content table and delete preview: `watch_history`, `my_list`, `rating`, `recommendation` (counts only).
-- **Write**: `users`, `profile`, `profile_genre_preference` (accounts); `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode` (import); and `content` again (`updateContent` runs an UPDATE; `deleteContent` runs a DELETE, which cascades, meaning it automatically removes the dependent rows, to `content_genre`, `content_credit`, `season`, `episode`, `watch_history`, `my_list`, `rating`, `recommendation`).
+- **Read**: `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode`, `watch_history` (search popularity). For the dashboard: `users`, `subscription`, `subscription_plan`, `payment`. For onboarding: `genre`. For the admin content table and delete preview: `watch_history`, `my_list`, `rating` (counts only).
+- **Write**: `users`, `profile`, `profile_genre_preference` (accounts); `content`, `genre`, `content_genre`, `person`, `content_credit`, `season`, `episode` (import); and `content` again (`updateContent` runs an UPDATE; `deleteContent` runs a DELETE, which cascades, meaning it automatically removes the dependent rows, to `content_genre`, `content_credit`, `season`, `episode`, `watch_history`, `my_list`, `rating`).
 
 ### Maturity rule
 
@@ -106,7 +106,7 @@ This section lists what you need from Yash (B) and Sahil (C), and what to do unt
 - **`genre` rows for `saveGenrePreferences`**
   - From: seeded (your own `listGenres` is only the read API).
   - Until it lands: query `genre` directly; no stub needed.
-- **Profile deletion cascades to `watch_history`, `my_list`, `rating`, `recommendation`**
+- **Profile deletion cascades to `watch_history`, `my_list`, `rating`**
   - From: Sahil's (C) tables already exist.
   - Until it lands: the FKs are `ON DELETE CASCADE`; nothing to stub.
 - **Recommendations after onboarding**
@@ -429,7 +429,7 @@ RETURNING profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NO
 
 1. Confirm the profile belongs to `userId` -> `NotFoundError`.
 2. Refuse when it is the user's only profile -> `ConflictError`.
-3. `DELETE` the row. The `watch_history`, `my_list`, `rating`, `profile_genre_preference` and `recommendation` rows go with it through `ON DELETE CASCADE`.
+3. `DELETE` the row. The `watch_history`, `my_list`, `rating` and `profile_genre_preference` rows go with it through `ON DELETE CASCADE`.
 
 **SQL:**
 
@@ -441,7 +441,7 @@ DELETE FROM profile WHERE profile_id = $1 AND user_id = $2;
 
 **Rules to respect:**
 
-- Table: `profile`, which cascades to `watch_history`, `my_list`, `rating`, `profile_genre_preference`, `recommendation` (`ON DELETE CASCADE` on every `profile_id` foreign key).
+- Table: `profile`, which cascades to `watch_history`, `my_list`, `rating`, `profile_genre_preference` (`ON DELETE CASCADE` on every `profile_id` foreign key).
 - Transaction: yes (count + delete, so two concurrent deletes cannot both pass the check). Idempotent: no (a second delete is a 404).
 - Deleting the profile the user is currently watching as is the route's cookie concern.
 
@@ -1053,18 +1053,17 @@ SELECT
     WHERE s.content_id = c.content_id)                                    AS episode,
   (SELECT COUNT(*) FROM watch_history  WHERE content_id = c.content_id) AS watch_history,
   (SELECT COUNT(*) FROM my_list        WHERE content_id = c.content_id) AS my_list,
-  (SELECT COUNT(*) FROM rating         WHERE content_id = c.content_id) AS rating,
-  (SELECT COUNT(*) FROM recommendation WHERE content_id = c.content_id) AS recommendation
+  (SELECT COUNT(*) FROM rating         WHERE content_id = c.content_id) AS rating
 FROM content AS c
 WHERE c.content_id = $1;
 ```
 
 **Rules to respect:**
 
-- Tables: `content` and the eight child tables. Every FK to `content` is `ON DELETE CASCADE` (`episode` through `season`).
+- Tables: `content` and the seven child tables. Every FK to `content` is `ON DELETE CASCADE` (`episode` through `season`).
 - `watch_history` carries both `content_id` and `episode_id`, so an episode's history is counted once, by `content_id`.
-- Indexes (custom migration): `watch_history`, `my_list` and `recommendation` are keyed by `profile_id` first, so lookups by `content_id` scan. Add:
-  `CREATE INDEX watch_history_content_idx ON watch_history (content_id); CREATE INDEX my_list_content_idx ON my_list (content_id); CREATE INDEX recommendation_content_idx ON recommendation (content_id);`
+- Indexes (custom migration): `watch_history` and `my_list` are keyed by `profile_id` first, so lookups by `content_id` scan. Add:
+  `CREATE INDEX watch_history_content_idx ON watch_history (content_id); CREATE INDEX my_list_content_idx ON my_list (content_id);`
   They also make the cascading DELETE itself fast (Postgres finds child rows through the FK column).
 - `content_genre`, `content_credit`, `season` and `rating` (`rating_content_idx`) are already covered.
 - No transaction. Idempotent: yes (read-only).
@@ -1075,7 +1074,7 @@ WHERE c.content_id = $1;
 
 - `NotFoundError("Title not found.")` -> 404.
 
-**Mock today:** Counts the mock title's genres, cast plus directors, seasons and episodes, and the `watchHistory` / `myList` / `ratings` rows with its id. `recommendation` has no mock rows and returns the fixed pseudo-count `(contentId * 7) % 5`.
+**Mock today:** Counts the mock title's genres, cast plus directors, seasons and episodes, and the `watchHistory` / `myList` / `ratings` rows with its id.
 
 **Used by:** `GET /api/admin/content/:contentId/impact`.
 
@@ -1098,7 +1097,7 @@ DELETE FROM content WHERE content_id = $1;
 
 **Rules to respect:**
 
-- Tables: `content`, and by `ON DELETE CASCADE` from `content_genre`, `content_credit`, `season` (and `episode` through `season_id`), `watch_history` (by `content_id` and by `episode_id`), `my_list`, `rating`, `recommendation`.
+- Tables: `content`, and by `ON DELETE CASCADE` from `content_genre`, `content_credit`, `season` (and `episode` through `season_id`), `watch_history` (by `content_id` and by `episode_id`), `my_list`, `rating`.
 - **Not deleted**: `person` rows (someone credited only on this title stays as an orphan) and `genre` rows (shared lookups; a genre may end up with no titles).
 - No explicit transaction (one statement). Idempotent: no, but safe to repeat: the second call finds nothing and answers 404.
 - Every profile loses that title's history, list entry and rating.
@@ -1463,5 +1462,5 @@ You are finished when every box below is ticked.
   - `/admin` dashboard (all "View SQL" panels), `/admin/import` end to end.
   - `/admin/content`: search, filters, pagination, remove dialog with live cascade counts and the SQL, edit dialog. The optimistic row removal now persists after a refetch, so drop `refetchType: "none"` in `src/hooks/queries/admin-content.ts`.
 - [ ] The guards are real (section 6.1) and Yash and Sahil were told; hardening items 1 and 2 done; 3 and 4 decided (documented in README section 9).
-- [ ] `npm run lint` and `npm run build` pass; route comments updated (sign-up session, `POST /api/admin/content/import` header); the `watch_history`, `my_list` and `recommendation` `content_id` indexes from 8.6 are in a custom migration.
+- [ ] `npm run lint` and `npm run build` pass; route comments updated (sign-up session, `POST /api/admin/content/import` header); the `watch_history` and `my_list` `content_id` indexes from 8.6 are in a custom migration.
 - [ ] PR(s) reviewed by Yash or Sahil with their curl evidence.

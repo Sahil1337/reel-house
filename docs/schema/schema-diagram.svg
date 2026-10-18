@@ -13,11 +13,9 @@
 <path class="ln" d="M750,538 L705,538 L705,211 L671,211"/>
 <path class="ln" d="M750,729 L705,729 L705,211 L671,211"/>
 <path class="ln" d="M750,954 L705,954 L705,211 L671,211"/>
-<path class="ln" d="M1210,228 L1127,228 L1127,125 L705,125 L705,211 L671,211"/>
 <path class="ln" d="M1040,279 L1076,279 L1076,621 L1104,621 A6,6 0 0 1 1116,621 L1199,621"/>
 <path class="ln" d="M1040,572 L1076,572 L1076,621 L1104,621 A6,6 0 0 1 1116,621 L1199,621"/>
 <path class="ln" d="M1040,763 L1076,763 L1076,621 L1104,621 A6,6 0 0 1 1116,621 L1199,621"/>
-<path class="ln" d="M1210,262 L1145,262 L1145,621 L1199,621"/>
 <path class="ln" d="M1040,313 L1070,313 A6,6 0 0 1 1082,313 L1110,313 L1110,1312 L2210,1312 L2210,781 L2196,781"/>
 <path class="ln" d="M1040,988 L1058,988 L1058,1335 L2235,1335 L2235,245 L2196,245"/>
 <path class="ln" d="M1575,211 L1530,211 L1530,621 L1481,621"/>
@@ -191,24 +189,6 @@
 <line x1="750" y1="937" x2="1040" y2="937" stroke="#1a1a1a" stroke-width="1.6"/>
 <rect x="750" y="893" width="290" height="112" fill="none" stroke="#1a1a1a" stroke-width="1.8"/>
 </g>
-<g id="t-recommendation">
-<rect x="1210" y="167" width="260" height="248" fill="#ffffff"/>
-<rect x="1210" y="167" width="260" height="44" fill="#e2e2e2"/>
-<text class="hd" x="1340" y="195" text-anchor="middle">RECOMMENDATION</text>
-<text class="row pk fk" x="1224" y="234">profile_id</text>
-<line x1="1210" y1="245" x2="1470" y2="245" stroke="#c9c9c9" stroke-width="1"/>
-<text class="row pk fk" x="1224" y="268">content_id</text>
-<line x1="1210" y1="279" x2="1470" y2="279" stroke="#c9c9c9" stroke-width="1"/>
-<text class="row" x="1224" y="302">row_type</text>
-<line x1="1210" y1="313" x2="1470" y2="313" stroke="#c9c9c9" stroke-width="1"/>
-<text class="row" x="1224" y="336">relevance_score</text>
-<line x1="1210" y1="347" x2="1470" y2="347" stroke="#c9c9c9" stroke-width="1"/>
-<text class="row" x="1224" y="370">generated_at</text>
-<line x1="1210" y1="381" x2="1470" y2="381" stroke="#c9c9c9" stroke-width="1"/>
-<text class="row" x="1224" y="404">rec_status</text>
-<line x1="1210" y1="211" x2="1470" y2="211" stroke="#1a1a1a" stroke-width="1.6"/>
-<rect x="1210" y="167" width="260" height="248" fill="none" stroke="#1a1a1a" stroke-width="1.8"/>
-</g>
 <g id="t-content">
 <rect x="1210" y="560" width="260" height="350" fill="#ffffff"/>
 <rect x="1210" y="560" width="260" height="44" fill="#e2e2e2"/>
@@ -351,9 +331,7 @@
 <text class="lb" x="365" y="755.25" text-anchor="middle">PAYS_FOR</text>
 <text class="lb" x="389" y="964.25" text-anchor="middle">USES</text>
 <text class="lb" x="727" y="239.25" text-anchor="middle">LOGS</text>
-<text class="lb" x="900" y="119.25" text-anchor="middle">RECEIVES</text>
 <text class="lb" x="1068.25" y="452" text-anchor="middle" transform="rotate(-90 1068.25 452)">RECORDS</text>
-<text class="lb" x="1161.25" y="430" text-anchor="middle" transform="rotate(-90 1161.25 430)">SUGGESTS</text>
 <text class="lb" x="1340" y="1306.25" text-anchor="middle">OF_EPISODE</text>
 <text class="lb" x="1340" y="1350.25" text-anchor="middle">PREFERS</text>
 <text class="lb" x="1547.25" y="735" text-anchor="middle" transform="rotate(-90 1547.25 735)">COMPRISES</text>

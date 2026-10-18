@@ -1,10 +1,11 @@
 # Database schema
 
 This is the agreed database design for Phase 1 (see the [backend guide](../backend/README.md)). It
-runs on PostgreSQL 15+ (hosted on Neon) and has 17 tables, one view (`genre_taste`) and one SQL
-function (`maturity_of()`). They are created by two migrations: `drizzle/0000_schema.sql` (the
-tables, constraints, indexes, `maturity_of()` and the `unaccent` extension) and
-`drizzle/0001_genre_taste_view.sql` (the view). Every table is in 3NF (third normal form, explained in [Normalisation notes](#normalisation-notes-for-the-report)).
+runs on PostgreSQL 15+ (hosted on Neon) and has 16 tables, one view (`genre_taste`) and one SQL
+function (`maturity_of()`). They are created by three migrations: `drizzle/0000_schema.sql` (the
+tables, constraints, indexes, `maturity_of()` and the `unaccent` extension),
+`drizzle/0001_genre_taste_view.sql` (the view) and `drizzle/0002_drop_recommendation.sql` (drops
+the `recommendation` table and its `rec_status` enum, which were never read). Every table is in 3NF (third normal form, explained in [Normalisation notes](#normalisation-notes-for-the-report)).
 
 ![Relational schema](schema-diagram.png)
 
@@ -18,7 +19,6 @@ tables, constraints, indexes, `maturity_of()` and the `unaccent` extension) and
   - [Account and billing](#account--billing)
   - [Content catalogue](#content-catalogue) (including [Natural keys](#natural-keys) and [Credits](#credits))
   - [Viewing activity](#viewing-activity)
-  - [Recommendations](#recommendations)
   - [genre_taste (view)](#genre_taste-view)
 - [Ranking](#ranking)
 - [Payment flow](#payment-flow)
@@ -30,8 +30,8 @@ tables, constraints, indexes, `maturity_of()` and the `unaccent` extension) and
 ## What changed from the domain description
 
 The domain description lists 16 entities. We merge CONTENT_CAST and CONTENT_DIRECTOR into one
-`content_credit` table (16 - 1 = 15) and add two tables, `profile_genre_preference` and
-`recommendation` (15 + 2 = 17). Everything that differs from the domain description:
+`content_credit` table (16 - 1 = 15) and add one table, `profile_genre_preference`
+(15 + 1 = 16). Everything that differs from the domain description:
 
 - **`content_credit`** replaces CONTENT_CAST and CONTENT_DIRECTOR. One credits table with a `role`
   column, so a new credit type is a new enum value, not a new table (see [Credits](#credits)).
@@ -39,7 +39,6 @@ The domain description lists 16 entities. We merge CONTENT_CAST and CONTENT_DIRE
   it, and is never stored.
 - **`profile_genre_preference`.** The genres a user picks during onboarding. They are the
   cold-start input for recommendations (what we know about a profile before it has any activity).
-- **`recommendation`.** The stored top picks: one row per (profile, title), with a feedback status.
 - **One view, `genre_taste`.** It turns the four taste signals (`watch_history`, `rating`,
   `my_list`, `profile_genre_preference`) into a score per profile and genre. "More like this"
   queries the base tables directly. See [Genre taste (view)](#genre_taste-view) and [Ranking](#ranking).
@@ -52,9 +51,10 @@ Each bullet is one design choice and the reason behind it.
 
 - **Table name `users`.** `user` is a reserved word in PostgreSQL.
 - **Recommendations.**
-  - Home is computed on every request from the base tables. The top picks are also stored per
-    profile in `recommendation`, keyed `(profile_id, content_id)`, and rewritten on each Home load.
-  - `rec_status` is the feedback loop.
+  - Home is computed on every request from the `genre_taste` view and the base tables. Results are
+    never stored: there is no `recommendation` table and no feedback status. (An earlier design
+    stored the top picks with a `rec_status`; nothing ever read them, so
+    `drizzle/0002_drop_recommendation.sql` dropped the table and the enum.)
   - A row's reason text is computed when Home is built, never stored.
 - **Watch history.** One row per (profile, title, episode), updated in place. This is enforced
   with `UNIQUE NULLS NOT DISTINCT` (a unique rule that treats two NULLs as equal, so movies with
@@ -116,8 +116,6 @@ erDiagram
   content ||--o{ rating : "rated in"
   profile ||--o{ profile_genre_preference : picks
   genre ||--o{ profile_genre_preference : ""
-  profile ||--o{ recommendation : receives
-  content ||--o{ recommendation : recommends
 ```
 
 ## Definition
@@ -141,7 +139,6 @@ CREATE TYPE credit_role         AS ENUM ('ACTOR', 'DIRECTOR');
 CREATE TYPE subscription_status AS ENUM ('PENDING', 'ACTIVE', 'CANCELLED', 'EXPIRED');
 CREATE TYPE payment_mode        AS ENUM ('CARD', 'UPI', 'NET_BANKING', 'WALLET');
 CREATE TYPE payment_status      AS ENUM ('SUCCESS', 'FAILED', 'REFUNDED');   -- rows are written by the webhook, so never pending
-CREATE TYPE rec_status          AS ENUM ('SHOWN', 'CLICKED', 'WATCHED', 'DISMISSED');
 ```
 
 ### Account & billing
@@ -376,30 +373,12 @@ CREATE TABLE profile_genre_preference (               -- onboarding: at least 3 
 );
 ```
 
-### Recommendations
-
-The stored top picks. The taste scores that rank them are not stored: the `genre_taste` view
-(next section) works them out from `watch_history`, `rating`, `my_list` and
-`profile_genre_preference` when Home is built (see [Ranking](#ranking)).
-
-```sql
-CREATE TABLE recommendation (
-  profile_id      INT         REFERENCES profile ON DELETE CASCADE,
-  content_id      INT         REFERENCES content ON DELETE CASCADE,
-  row_type        VARCHAR(30) NOT NULL,                -- 'top-picks'
-  relevance_score REAL        NOT NULL,
-  generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  rec_status      rec_status  NOT NULL DEFAULT 'SHOWN',
-  PRIMARY KEY (profile_id, content_id)                 -- one recommendation per title per profile
-);
--- No reason column: the text a row shows ("Based on the genres you watch, rate and save",
--- "You watch a lot of <Genre>") is built when Home is served, so it can't go stale.
-CREATE INDEX recommendation_rank_idx ON recommendation (profile_id, relevance_score DESC);
-```
-
 ### genre_taste (view)
 
-The schema's only view: one row per (profile, genre) with a positive `taste_score`.
+Recommendations are computed on every request and never stored. The schema's only
+recommendation-related object is this view: one row per (profile, genre) with a positive
+`taste_score`, worked out from `watch_history`, `rating`, `my_list` and
+`profile_genre_preference` when Home is built (see [Ranking](#ranking)).
 
 | Column | Meaning |
 | --- | --- |
@@ -613,19 +592,11 @@ No non-key attribute depends on another non-key attribute. Points worth noting:
     never stored.
   - So there is no transitive dependency (`content_id → age_rating → maturity`) and no lookup
     table is needed.
-- **`recommendation` key**
-  - It is keyed by `(profile_id, content_id)`: a recommendation is one title _for_ one profile, so
-    the natural composite key is the primary key and no surrogate id is needed.
-  - `row_type`, `relevance_score`, `generated_at` and `rec_status` all depend on the whole key
-    (2NF).
-  - Reaching the profile through a watch-history row would make it depend on a non-key attribute,
-    and would leave profiles with no history (new ones) without recommendations.
-- **Reason text not stored**
-  - The human-readable reason is _not_ stored.
-  - The reason is a function of `row_type` plus context (a genre name, whether the profile has
-    activity), so it is built when Home is served.
-  - Storing it would duplicate derivable data and go stale when titles are renamed or
-    the viewer's activity changes.
+- **Recommendations not stored**
+  - Top picks, scores and reason text are all functions of `watch_history`, `rating`, `my_list` and
+    `profile_genre_preference`, so they are computed when Home is served.
+  - Storing them would duplicate derivable data and go stale when titles are renamed or the
+    viewer's activity changes. This is why the `recommendation` table was dropped.
 - **"Completed" not stored**
   - It is derived from `progress_percent` (`>= 90`), so it is not stored at all, not even as a
     generated column.
@@ -688,7 +659,7 @@ plain PostgreSQL. Almost everything above maps directly (SQL -> Drizzle):
 - `UNIQUE NULLS NOT DISTINCT` (`watch_history`, the `content` and `person` natural keys) ->
   `unique().on(…).nullsNotDistinct()`, e.g.
   `unique().on(t.title, t.contentType, t.releaseDate).nullsNotDistinct()`
-- composite primary keys (`my_list`, `rating`, `recommendation`, …) ->
+- composite primary keys (`my_list`, `rating`, …) ->
   `primaryKey({ columns: [t.profileId, t.contentId] })`
 - `genre_taste` view -> `pgView("genre_taste", {…}).existing()` in
   `src/server/db/schema/recommendations.ts` (the view itself is created by hand-written SQL in
@@ -696,9 +667,10 @@ plain PostgreSQL. Almost everything above maps directly (SQL -> Drizzle):
 - `maturity_of()` function and `CREATE EXTENSION unaccent` -> hand-written SQL in the migration;
   queries call the function with ``sql`maturity_of(${content.ageRating})` ``
 
-The schema ships as two migrations: `drizzle/0000_schema.sql` (tables, constraints, indexes,
-`maturity_of()` and the `unaccent` extension) and `drizzle/0001_genre_taste_view.sql` (the
-`genre_taste` view). Check them before applying. Anything `drizzle-kit` doesn't emit the way we
+The schema ships as three migrations: `drizzle/0000_schema.sql` (tables, constraints, indexes,
+`maturity_of()` and the `unaccent` extension), `drizzle/0001_genre_taste_view.sql` (the
+`genre_taste` view) and `drizzle/0002_drop_recommendation.sql` (drops the `recommendation` table
+and the `rec_status` enum). Check them before applying. Anything `drizzle-kit` doesn't emit the way we
 want is written into those files by hand.
 
 The client (`src/server/db/index.ts`) is drizzle-orm over a node-postgres (`pg`) `Pool` on

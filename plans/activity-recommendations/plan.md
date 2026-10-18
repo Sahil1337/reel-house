@@ -61,8 +61,9 @@ Home (the profile picker sends un-onboarded profiles to `/onboarding`, which nee
 worth +1, and no popularity fallback is needed. A profile with nothing at all (only possible in seed data) gets
 every score 0, ordered newest first.
 
-**Home is computed on every request.** All the queries take a few milliseconds (top picks measured 4 ms), so there is
-no cache, no 15-minute rule, and no reading back from `recommendation`.
+**Home is computed on every request, and the results are never stored.** All the queries take a few milliseconds
+(top picks measured 4 ms), so there is no cache, no 15-minute rule, and no `recommendation` table (it was dropped by
+`drizzle/0002_drop_recommendation.sql`, together with the `rec_status` enum). Nothing is written when Home loads.
 
 ### Home rows, in order
 
@@ -79,36 +80,49 @@ A row with no items is left out.
 
 ---
 
-## 2. How to write raw SQL in this repo
+## 2. How to write queries in this repo
 
-`db` is Drizzle over node-postgres (`src/server/db/index.ts`). For these queries, use raw SQL with the `sql`
-template tag. It's closest to psql and to what you'll show your teacher.
+`db` is Drizzle over node-postgres (`src/server/db/index.ts`). Use Drizzle's **typed query builder** with the
+schema tables exported from `@/server/db`: results come back typed and camelCase, so there are no handwritten
+row types and no snake_case → camelCase mapping. Write the query in psql first (`demo.sql`), then translate it.
 
 ```ts
-import { sql } from "drizzle-orm";
-import { db } from "@/server/db";
+import { and, desc, eq } from "drizzle-orm";
+import { db, rating } from "@/server/db";
 
-const { rows } = await db.execute<{ content_id: number; value: number }>(sql`
-  SELECT content_id, value FROM rating WHERE profile_id = ${profileId}
-`);
-// rows: [{ content_id: 8, value: 5 }, ...]   ← column names come back snake_case
+const rows = await db
+  .select({ contentId: rating.contentId, value: rating.value })
+  .from(rating)
+  .where(eq(rating.profileId, profileId))
+  .orderBy(desc(rating.ratedAt));
+// rows: [{ contentId: 8, value: 5 }, ...]   ← typed from the schema
 ```
+
+| SQL | Drizzle |
+|---|---|
+| `SELECT c.*` | `select({ ...getTableColumns(content) })` |
+| `JOIN` / `LEFT JOIN` | `.innerJoin(t, eq(...))` / `.leftJoin(t, and(eq(...), eq(...)))` |
+| `WHERE id = ANY($ids)` | `inArray(content.contentId, ids)` |
+| `NOT EXISTS (SELECT 1 ...)` | ``notExists(db.select({ one: sql`1` }).from(t).where(...))`` |
+| `DISTINCT ON (x)` | `db.selectDistinctOn([t.x], {...})` |
+| same table twice | `alias(contentGenre, "in_genre")` |
+| `INSERT ... ON CONFLICT DO UPDATE` | `.insert(t).values(...).onConflictDoUpdate({ target: [...], set: {...} })` |
+| a view | `genreTaste` is declared with `pgView(...).existing()`, query it like a table |
+
+Use the `sql` tag **only** for what the builder can't express, typed with `sql<T>`:
+``sql<MaturityLevel>`maturity_of(${content.ageRating})` ``, the √ score ``sql<number>`SUM(...) / SQRT(COUNT(*)::numeric)` ``,
+`now()`, or the `(season_number, episode_number) > (...)` row comparison.
 
 Things that will bite you:
 
 | Need | Write | Why |
 |---|---|---|
-| A value | `${profileId}` | Becomes `$1`, never string-concatenated (no SQL injection) |
-| An enum | `${profile.maturityLevel}::maturity_level` | Without the cast Postgres compares text, and `'KIDS' < 'TEEN'` happens to work for the wrong reason |
-| A list of ids | `= ANY(${sql.param(ids)})` | `IN ${ids}` renders `IN ()` for an empty list, which is a syntax error |
-| A reusable SQL piece | a function returning `sql\`...\`` and `${piece}` inside another `sql` | Fragments nest |
+| An enum inside `sql` | `${level}::maturity_level` | Without the cast Postgres compares text |
 | Numbers | nothing | `NUMERIC`/`BIGINT` are already parsed to `number` in `db/index.ts` |
 | Timestamps | `.toISOString()` | `timestamptz` comes back as a JS `Date`; the API sends ISO strings |
-| A transaction | `await db.transaction(async (tx) => { await tx.execute(sql\`...\`); ... })` | Use `tx`, not `db`, inside |
+| A transaction | `await db.transaction(async (tx) => { await tx.insert(...); ... })` | Use `tx`, not `db`, inside |
 | FK violation → 404 | `(error as { cause?: { code?: string } }).cause?.code === "23503"` | Drizzle wraps the pg error in `DrizzleQueryError`; the code is on `.cause` |
-
-Try every query in psql first (`psql "$DATABASE_URL"` after `set -a; source .env; set +a`), then paste it
-into `sql\`...\`` and swap the literals for `${...}`.
+| A raw subquery inside a select field | split it into its own typed query | In a single-table select Drizzle leaves column names unqualified, so a correlated subquery there becomes ambiguous (see `loadContentData`) |
 
 ---
 
@@ -117,13 +131,12 @@ into `sql\`...\`` and swap the literals for `${...}`.
 - [ ] **0. Setup**: branch `feat/activity-recs`, `npm run dev`, open psql and run the queries in section 5 to get used to the data.
 - [ ] **A. `activity.service.ts`**: section 4 below (follows the existing spec).
 - [ ] **B1. Types**: shrink `src/types/recommendations.ts`.
-- [ ] **B2. Shared SQL fragments + `loadSummaries`**.
+- [ ] **B2. Shared SQL fragments + `loadContentData`**.
 - [ ] **B3. `getGenreTaste` + `getSignalFlags`**.
 - [ ] **B4. `getTopPicks`**.
 - [ ] **B5. `getContinueWatching`**.
 - [ ] **B6. `getGenreTitles`**: the top-picks query filtered to one genre.
 - [ ] **B7. `getHomeFeed`**: wire it all together.
-- [ ] **B8. `storeTopPicks`**.
 - [ ] **C. Cleanup**: remove mock imports, update the file header comment and the Person C doc, `npm run lint`, `npm run build`.
 
 Test after **every** step with psql or curl (section 6). Don't write all of it and then debug.
@@ -140,13 +153,11 @@ has the SQL for every function. Build them in this order; each one is one or two
 | 1 | `isInMyList`, `addToMyList`, `removeFromMyList`, `listMyList` | §4.4–4.6, 4.10 | `ON CONFLICT DO NOTHING`; FK 23503 → `NotFoundError("Title not found.")` |
 | 2 | `getRating`, `rateTitle`, `removeRating` | §4.7, 4.8, 4.11 | upsert with `ON CONFLICT (profile_id, content_id) DO UPDATE` |
 | 3 | `listHistory`, `removeHistoryEntry` | §4.2, 4.3 | `c.*, e.*` clash on `title` etc.: alias columns explicitly; 0 rows deleted → 404 |
-| 4 | `recordProgress` | §4.1 | movie → `episode_id = NULL`; series episode must belong to the title (422); upsert + `rec_status` update in **one transaction** |
+| 4 | `recordProgress` | §4.1 | movie → `episode_id = NULL`; series episode must belong to the title (422); then just the upsert (no transaction) |
 | 5 | `getNextEpisode`, `getResumePoint`, `getTitleActivity` | §4.9, 4.12, 4.13 | `(season_number, episode_number) > (...)` row comparison; run the 3 helpers with `Promise.all` |
 
-Simplifications:
-- Skip the optional `SHOWN → CLICKED` write in `getTitleActivity`. `recordProgress` already does it.
-- `listHistory` and `listMyList` need a `ContentSummary` per row. Reuse `loadSummaries` from B2 (export it from a
-  small shared module, or copy it) instead of writing the genres subquery twice.
+Simplification: `listHistory` and `listMyList` need a `ContentSummary` per row. Reuse `loadContentData` from B2
+(it lives in `src/server/db/queries/content.ts`, next to `loadEpisodeData`) instead of writing the genres subquery twice.
 
 ---
 
@@ -160,11 +171,12 @@ Delete `Candidate`, `RankedCandidate`, `HomeBuild` and `InteractionScores`. Shri
 export type HomeRowKind = "continue-watching" | "top-picks" | "genre-picks";
 ```
 
-Keep `RowItem`, `HomeRow`, `HomeHero`, `HomeFeed`, `RecStatus`, `Recommendation`. The UI only reads
+Keep `RowItem`, `HomeRow`, `HomeHero` and `HomeFeed`. Delete `RecStatus` and `Recommendation` too: the table and the
+enum no longer exist, and nothing reads them. The UI only reads
 `row.kind === "continue-watching"`, so nothing on the frontend breaks.
 
 In the service, delete `WEIGHTS` and the exports `shouldRefreshRecommendations`, `computeInteractionScores`,
-`generateCandidates`, `rankCandidates`, `buildHomeRows` and `storeRecommendations`. Keep `ROW_SIZE = 18`
+`generateCandidates`, `rankCandidates`, `buildHomeRows`, `storeRecommendations` and `storeTopPicks`. Keep `ROW_SIZE = 18`
 and `getHomeFeed`.
 
 New `REASONS` (private const):
@@ -182,7 +194,7 @@ const REASONS = {
 };
 ```
 
-### B2. Shared SQL fragments + `loadSummaries`
+### B2. Shared SQL fragments + `loadContentData`
 
 Three of the queries filter the same way. Write the filters once:
 
@@ -200,7 +212,7 @@ function unseenBy(profileId: number) {
 }
 ```
 
-`loadSummaries(ids)` turns ids into the `ContentSummary` cards need. Load **every** row's ids in **one** call at
+`loadContentData(ids)` turns ids into the `ContentSummary` cards need. Load **every** row's ids in **one** call at
 the end of `getHomeFeed`, not one call per row.
 
 ```sql
@@ -369,42 +381,19 @@ The Prestige 10.83, Fallout 10.73. Many of these are also her top picks, which i
      topPicks  = picks, skip shown, take 18       → shown.add each
      genre rows = each one in order, skip shown, take 18 → shown.add each
    (continue-watching is not deduped)
-4. summaries = loadSummaries(every id from steps 1–3)   ← ONE query
+4. summaries = loadContentData(every id from steps 1–3)   ← ONE query
 5. Build HomeRow[] in the order of section 1, using REASONS:
      top-picks reason: hasSignals → topPicks · only hasPicks → topPicksPickedGenres · neither → topPicksNoSignals
      genre rows reason: hasSignals → genreWatched(name) · else genrePicked(name)
      hero reason: hasSignals || hasPicks → heroPick(name) · else heroPopular ("Picked for you")
    Drop rows with items.length === 0.
-6. try { await storeTopPicks(id, topPicks) } catch (e) { console.error(e) }   ← never fails the page
-7. return { profileId, hero, rows, generatedAt: new Date().toISOString() }
+6. return { profileId, hero, rows, generatedAt: new Date().toISOString() }
 ```
 
 Why fetch `ROW_SIZE * 4` for the genre rows? Dedupe removes the titles already in top picks (and in the first
 genre row), and you still want 18 left. The best Drama and Science Fiction titles are the same ones that top
 Riya's picks, so the genre rows lose a lot: checked on the seed, with `ROW_SIZE * 3` her Science Fiction row
 ends up with 17 titles after dedupe, with `* 4` it has 35.
-
-### B8. `storeTopPicks(profileId, picks)`
-
-This writes the top-picks row into the `recommendation` table, so the table is used and `recordProgress` can move
-`rec_status` from SHOWN to CLICKED to WATCHED. It's one transaction:
-
-```sql
-BEGIN;
-INSERT INTO recommendation (profile_id, content_id, row_type, relevance_score, generated_at)
-VALUES ($1, $c1, 'top-picks', $s1, now()), ($1, $c2, 'top-picks', $s2, now()), ...
-ON CONFLICT (profile_id, content_id)
-DO UPDATE SET row_type = EXCLUDED.row_type,
-              relevance_score = EXCLUDED.relevance_score,
-              generated_at = now();                       -- rec_status is NOT touched: it survives
-DELETE FROM recommendation
- WHERE profile_id = $1 AND generated_at < now() AND rec_status <> 'DISMISSED';   -- picks that dropped out
-COMMIT;
-```
-
-`now()` is the same for the whole transaction, so `generated_at < now()` matches exactly the rows this run
-didn't upsert. Build the VALUES list with `sql.join(picks.map((p) => sql\`(${profileId}, ${p.contentId}, 'top-picks', ${p.score}, now())\`), sql\`, \`)`.
-If `picks` is empty, skip the INSERT and only run the DELETE.
 
 ---
 
@@ -425,8 +414,8 @@ Checklist:
 - [ ] A brand-new profile with 3 onboarding genres: top picks come only from those genres, with reason `topPicksPickedGenres`, and the hero reason is `heroPick` (it has picks).
 - [ ] A brand-new profile with nothing: every score is 0, so top picks are the newest allowed titles (release date descending), reason `topPicksNoSignals`, hero "Picked for you". Only reachable with seed data, since onboarding forces 3 genres.
 - [ ] Rate a title 5★, reload Home, and its genres rise in the genre rows (no cache, so it's instant).
-- [ ] `SELECT * FROM recommendation WHERE profile_id = 1 ORDER BY relevance_score DESC;` lists the top picks.
-- [ ] Watch a recommended title to 95% → its `rec_status` is WATCHED. Reload Home → it's gone from top picks.
+- [ ] Watch a recommended title to 95%, reload Home → it's gone from top picks (it now has a `watch_history` row).
+- [ ] Loading Home writes nothing: row counts of every table are unchanged before and after.
 - [ ] `grep -n "server/mocks" src/server/services/{activity,recommendations}.service.ts` is empty.
 - [ ] `npm run lint` and `npm run build` pass.
 

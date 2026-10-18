@@ -138,12 +138,12 @@ export async function updateProfile(
  * Steps:
  *   1. Confirm the profile belongs to userId (getOwnedProfile) → NotFoundError.
  *   2. Refuse when it is the user's only profile → ConflictError.
- *   3. DELETE the row; watch_history, my_list, rating, profile_genre_preference and recommendation
+ *   3. DELETE the row; watch_history, my_list, rating and profile_genre_preference
  *      rows go with it through ON DELETE CASCADE.
  * SQL:
  *   SELECT COUNT(*) FROM profile WHERE user_id = $1;                    -- must be > 1
  *   DELETE FROM profile WHERE profile_id = $1 AND user_id = $2;
- * Tables: profile (cascades to watch_history, my_list, rating, profile_genre_preference, recommendation)
+ * Tables: profile (cascades to watch_history, my_list, rating, profile_genre_preference)
  *   ·  Keys/constraints relied on: ON DELETE CASCADE on every profile_id foreign key
  * Transaction: yes (count + delete, so two concurrent deletes can't both pass the check)
  *   ·  Idempotent: no (a second delete is a 404)

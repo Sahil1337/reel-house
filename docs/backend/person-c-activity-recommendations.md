@@ -2,9 +2,9 @@
 
 Sahil, you own two things. The first is **what a profile does**: watch progress, History, My List, ratings, and the state of a title page. The second is **what Home shows because of it**: a simple genre-taste recommendation engine.
 
-Read [README.md](README.md) first (architecture, setup, conventions, curl testing). This file is the complete spec for `activity.service` and the overview of `recommendations.service`; the recommendations build guide is [`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md). The schema is in [`../schema/SCHEMA.md`](../schema/SCHEMA.md) (see "Viewing activity", "Recommendations" and "Ranking").
+Read [README.md](README.md) first (architecture, setup, conventions, curl testing). This file is the complete spec for `activity.service` and the overview of `recommendations.service`; the recommendations build guide is [`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md). The schema is in [`../schema/SCHEMA.md`](../schema/SCHEMA.md) (see "Viewing activity", "genre_taste (view)" and "Ranking").
 
-The Neon database already has the migrations (`drizzle/0000_schema.sql` for the tables, `drizzle/0001_genre_taste_view.sql` for the `genre_taste` view) and the seeded data. The one view, `genre_taste`, gives you each profile's genre taste scores; every other query reads the base tables directly. So you can run every query below against real rows right away.
+The Neon database already has the migrations (`drizzle/0000_schema.sql` for the tables, `drizzle/0001_genre_taste_view.sql` for the `genre_taste` view, `drizzle/0002_drop_recommendation.sql`, which removes the unused `recommendation` table) and the seeded data. The one view, `genre_taste`, gives you each profile's genre taste scores; every other query reads the base tables directly. Recommendations are computed on every request and never stored. So you can run every query below against real rows right away.
 
 ## Table of contents
 
@@ -13,10 +13,9 @@ The Neon database already has the migrations (`drizzle/0000_schema.sql` for the 
 3. [Ordered checklist](#3-ordered-checklist)
 4. [`activity.service.ts`](#4-activityservicets)
 5. [`recommendations.service.ts`: the genre-taste engine](#5-recommendationsservicets-the-genre-taste-engine)
-6. [Deep dive: the `rec_status` feedback loop](#6-deep-dive-the-rec_status-feedback-loop)
-7. [Testing with the seeded data](#7-testing-with-the-seeded-data)
-8. [Implementation notes and pitfalls](#8-implementation-notes-and-pitfalls)
-9. [Definition of done](#9-definition-of-done)
+6. [Testing with the seeded data](#6-testing-with-the-seeded-data)
+7. [Implementation notes and pitfalls](#7-implementation-notes-and-pitfalls)
+8. [Definition of done](#8-definition-of-done)
 
 ---
 
@@ -29,7 +28,7 @@ This section lists exactly what is yours: the files, the routes, and the tables.
 - `src/server/services/activity.service.ts`
   - Functions: `recordProgress`, `listHistory`, `removeHistoryEntry`, `listMyList`, `addToMyList`, `removeFromMyList`, `rateTitle`, `removeRating`, `getTitleActivity`, `isInMyList`, `getRating`, `getResumePoint`, `getNextEpisode`.
 - `src/server/services/recommendations.service.ts`
-  - Exports: `ROW_SIZE`, `getHomeFeed`, `storeTopPicks`, plus the small query helpers described in the plan. Build it from [`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md).
+  - Exports: `ROW_SIZE`, `getHomeFeed`, plus the small query helpers described in the plan. Build it from [`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md).
 
 ### Routes you serve
 
@@ -48,7 +47,7 @@ All of these use `requireOwnedProfile` (the guard that checks the profile belong
 
 ### Tables
 
-- **You own (you write them):** `watch_history`, `my_list`, `rating`, `recommendation`.
+- **You own (you write them):** `watch_history`, `my_list`, `rating`.
 - **You only read:** `profile_genre_preference`, `profile`, `content`, `content_genre`, `genre`, `season`, `episode`, and the `genre_taste` view.
 - **Onboarding is not yours.** `PUT .../onboarding` belongs to Tejasva (A). You only read what it stores: `profile_genre_preference` and `profile.onboarded_at`.
 
@@ -84,18 +83,17 @@ Who depends on you:
 
 Work through these in order. Each step builds on the one before.
 
-- [ ] **0. Prep**: branch `feat/activity-recs`, own Neon branch in `.env`, `npm run dev`, `db:studio` to look at `watch_history`, `my_list`, `rating`; run the genre-taste query from the plan and compare with the expected values in section 7.1.
+- [ ] **0. Prep**: branch `feat/activity-recs`, own Neon branch in `.env`, `npm run dev`, `db:studio` to look at `watch_history`, `my_list`, `rating`; run the genre-taste query from the plan and compare with the expected values in section 6.1.
 - [ ] **1. My List**: `listMyList`, `addToMyList`, `removeFromMyList` (+ `isInMyList`). curl add twice (201 both), list, remove twice.
 - [ ] **2. Ratings**: `rateTitle`, `removeRating` (+ `getRating`). curl 5, then 3, value 6 -> 422, unknown title -> 404.
 - [ ] **3. History**: `listHistory`, `removeHistoryEntry`. History page; second delete -> 404.
-- [ ] **4. Progress**: `recordProgress` (validation, upsert, feedback loop in one transaction). Player in the UI; movie and series; wrong episode -> 422; 95% twice -> one row.
+- [ ] **4. Progress**: `recordProgress` (validation, then one upsert). Player in the UI; movie and series; wrong episode -> 422; 95% twice -> one row.
 - [ ] **5. Title activity**: `getTitleActivity`, `getResumePoint`, `getNextEpisode`. Title page labels "Resume · 62%", "Resume S1:E3", "Play S1:E4"; finale completed -> null.
-- [ ] **6. Genre taste**: `getGenreTaste` + `getSignalFlags` (read the `genre_taste` view with `WHERE profile_id = $1`; the CTEs inside it read `watch_history`, `rating`, `my_list`, `profile_genre_preference`); compare with section 7.1.
+- [ ] **6. Genre taste**: `getGenreTaste` + `getSignalFlags` (read the `genre_taste` view with `WHERE profile_id = $1`; the CTEs inside it read `watch_history`, `rating`, `my_list`, `profile_genre_preference`); compare with section 6.1.
 - [ ] **7. Home queries**: `getTopPicks`, `getContinueWatching`, `getGenreTitles` (the top-picks query filtered to one genre), all as in the plan.
 - [ ] **8. `getHomeFeed`**: wire the rows together (dedupe, reasons, hero, match %), computed on every request.
-- [ ] **9. `storeTopPicks`**: write the top picks to `recommendation`; never let a failure break the page.
-- [ ] **10. Check** the three demo profiles' Home pages, cold start (profile 3, a brand new profile).
-- [ ] **11. Cleanup**: remove `getMockDb`/`toHistoryItem`/`toSummary`/`findContent` imports; update the route header comments that change; lint; build.
+- [ ] **9. Check** the three demo profiles' Home pages, cold start (profile 3, a brand new profile).
+- [ ] **10. Cleanup**: remove `getMockDb`/`toHistoryItem`/`toSummary`/`findContent` imports; update the route header comments that change; lint; build.
 
 ---
 
@@ -129,14 +127,13 @@ This service records what a profile does (progress, My List, ratings) and reads 
 
 ### 4.1 `recordProgress(profileId: number, input: ProgressInput): Promise<WatchHistory>`
 
-**What it does:** Records how far a profile got in a title or episode. The player reports this on pause, seek, the 90% mark, the end, every 10 s while playing, and on page hide (`keepalive`, so the browser still sends the request while the page closes). This is the hot path (called very often): keep it to one round trip plus the cheap recommendation update.
+**What it does:** Records how far a profile got in a title or episode. The player reports this on pause, seek, the 90% mark, the end, every 10 s while playing, and on page hide (`keepalive`, so the browser still sends the request while the page closes). This is the hot path (called very often): keep it to the validation lookups and one upsert. It is just the validated upsert into `watch_history`: nothing else is updated.
 
 **Steps:**
 
 1. Validate. Clamp and round `progressPercent` to 0-100 (the CHECK is the backstop). The title must exist, otherwise `NotFoundError`.
 2. A **movie** stores `episode_id = NULL`, whatever the client sent. A **series** needs an `episodeId` that belongs to the title (`episode` joined to `season` on `content_id`), otherwise `ValidationError` (422).
 3. Upsert the single row for (profile, content, episode) and bump `watched_at`. Re-watching a finished title overwrites its progress (a fresh pass), so a re-watch moves to the top of History.
-4. Feedback loop: if the title now counts as completed (progress >= 90), mark its recommendation `WATCHED`. Any progress write on a recommended title also moves `SHOWN` -> `CLICKED`.
 
 **SQL:**
 
@@ -149,17 +146,12 @@ VALUES ($profile, $content, $episode, $percent)                              -- 
 ON CONFLICT (profile_id, content_id, episode_id)
 DO UPDATE SET progress_percent = EXCLUDED.progress_percent, watched_at = now()
 RETURNING history_id, profile_id, content_id, episode_id, watched_at, progress_percent;
--- feedback loop (after the upsert; never touches DISMISSED):
-UPDATE recommendation
-   SET rec_status = CASE WHEN $percent >= 90 THEN 'WATCHED' ELSE 'CLICKED' END::rec_status
- WHERE profile_id = $1 AND content_id = $2
-   AND rec_status IN ('SHOWN', 'CLICKED');
 ```
 
 Drizzle version of the upsert:
 
 ```ts
-await tx
+await db
   .insert(watchHistory)
   .values({ profileId, contentId, episodeId, progressPercent: percent })
   .onConflictDoUpdate({
@@ -171,10 +163,10 @@ await tx
 
 **Rules to respect:**
 
-- Tables and keys: `watch_history`, `content`, `episode`, `season`, `recommendation`.
+- Tables and keys: `watch_history`, `content`, `episode`, `season`.
 - `watch_history` has UNIQUE NULLS NOT DISTINCT `(profile_id, content_id, episode_id)`, constraint `watch_history_profile_content_episode_key`. This needs PostgreSQL 15+. It makes the NULL episode of a movie still conflict with itself (normally two NULLs count as different).
-- Other constraints: CHECK `progress_percent BETWEEN 0 AND 100`; FKs on `profile_id` / `content_id` / `episode_id`; PK `(profile_id, content_id)` on `recommendation`.
-- Transaction: yes. The upsert and the `rec_status` update commit together.
+- Other constraints: CHECK `progress_percent BETWEEN 0 AND 100`; FKs on `profile_id` / `content_id` / `episode_id`.
+- Transaction: no. It is a single upsert statement.
 - Idempotent: yes. The same input gives the same row; only `watched_at` moves.
 - A non-finite `progressPercent` is rejected by the route's zod (the request-validation library).
 - "The episode belongs to the title" is a rule the schema cannot declare (SCHEMA.md "Known limits"), so the service checks it.
@@ -416,24 +408,14 @@ DELETE FROM rating WHERE profile_id = $1 AND content_id = $2;
 
 1. Check the title exists. Use `getContentDetail` from `./catalog.service` -> `NotFoundError("Title not found.")`. A plain `SELECT 1 FROM content` with the same error is acceptable and cheaper.
 2. Compute `inMyList = isInMyList`, `rating = getRating`, `resume = getResumePoint`. Run the three in parallel with `Promise.all` (JavaScript's "run these at the same time and wait for all").
-3. Optional feedback loop: opening the title page moves a SHOWN recommendation to CLICKED.
 
-**SQL:**
-
-```sql
--- optional step 3 (a write on a GET, so only if the team wants page-view granularity):
-UPDATE recommendation SET rec_status = 'CLICKED'
- WHERE profile_id = $1 AND content_id = $2 AND rec_status = 'SHOWN';
-```
-
-The other three queries are in the helpers (sections 4.10 to 4.12).
+**SQL:** None of its own: the three queries are in the helpers (sections 4.10 to 4.12). `getTitleActivity` only reads and writes nothing.
 
 **Rules to respect:**
 
 - Tables and keys: `my_list`, `rating`, `watch_history`, `episode`, `season` (+ `content` for the existence check). PKs of `my_list` and `rating`, index `watch_history_recent_idx`.
 - Transaction: no. Idempotent: yes (a read).
 - A profile that never touched the title gets `{ inMyList: false, rating: null, resume: null }`.
-- Step 3 is a write on a GET, so do it only if the team wants page-view granularity. `recordProgress` already covers the player (README 9.12).
 
 **Errors:**
 
@@ -593,38 +575,17 @@ This service builds the Home page. The build guide, with every query run against
 
 **Other rules**
 
-- Home is computed on every request. There is no cache, no refresh policy and no reading back from `recommendation`.
+- Home is computed on every request from `genre_taste`. There is no cache and no refresh policy, and results are never stored: there is no `recommendation` table.
 - Cold start needs no special code: onboarding makes every profile pick at least 3 genres before it reaches Home (`ONBOARDING_MIN_GENRES = 3`; the profile picker sends un-onboarded profiles to `/onboarding`), so a new profile already has a genre taste and no popularity fallback is needed. A profile with nothing at all (only possible in seed data) gets every score 0, ordered newest first.
-- The top picks are also written to `recommendation` (`storeTopPicks`, one transaction, never failing the page), so `recordProgress` can move `rec_status` and the table is used.
 - The service exports `ROW_SIZE` and `getHomeFeed`. The helpers and the row catalogue are in the plan.
 
 ---
 
-## 6. Deep dive: the `rec_status` feedback loop
-
-`rec_status` records what the profile did with a stored recommendation. The normal path is `SHOWN` (default when stored) -> `CLICKED` -> `WATCHED`. The other end state is `DISMISSED`.
-
-- **Top pick stored** (`storeTopPicks`, on a Home load): the row is inserted as `SHOWN`.
-- **Any progress write (< 90%) on a recommended title** (`recordProgress`): `SHOWN`/`CLICKED` -> `CLICKED`.
-- **Progress >= 90%** (`recordProgress`): `SHOWN`/`CLICKED` -> `WATCHED`.
-- **Title page opened, optional** (`getTitleActivity`): `SHOWN` -> `CLICKED` (README 9.12).
-- **Dismissed**: no route yet. -> `DISMISSED` (README 9.11).
-- **Home reload** (`storeTopPicks`): `rec_status` is **never** overwritten. Picks that dropped out are deleted unless `DISMISSED`.
-
-Notes:
-
-- `WATCHED` and `DISMISSED` never move back from `recordProgress`, because of its `WHERE rec_status IN ('SHOWN','CLICKED')`.
-- A watched title leaves the top picks on the next load, because the "unseen" filter hides anything with a `watch_history`, `rating` or `my_list` row.
-- Ratings and progress are read straight from the base tables, so Home reflects them on the next load.
-- `CLICKED`/`WATCHED` are available for later tuning, but nothing ranks on them yet.
-
----
-
-## 7. Testing with the seeded data
+## 6. Testing with the seeded data
 
 The seed gives three demo profiles, so you can check each query against known numbers. The plan has the full list of expected results per query. Use these checks while you build and again before opening your PR.
 
-### 7.1 Expected values
+### 6.1 Expected values
 
 The numbers below come from the plan, run against the seed with the `genre_taste` view:
 
@@ -636,7 +597,7 @@ The numbers below come from the plan, run against the seed with the `genre_taste
 - **Continue watching, Riya:** Breaking Bad S1:E3 41%, Dune 62%, Parasite 6%, Stranger Things S1:E2 23%.
 - **Signal flags:** Riya has signals and picks; Mini has signals but no picks (her My List counts as a signal).
 
-### 7.2 curl checks
+### 6.2 curl checks
 
 ```bash
 curl -b jar $BASE/api/profiles/1/home | jq '.hero.content.title, (.rows[] | {id, title, reason, n: (.items|length)})'
@@ -659,51 +620,51 @@ Also:
 - Create a brand-new profile (`POST /api/profiles`, Tejasva) and complete onboarding with 3 genres. Top picks must come only from those genres, with the "picked genres" reason.
 - A brand-new profile with nothing: every score is 0, so top picks are the newest allowed titles and the hero says "Picked for you". This is only reachable with seed data, since onboarding forces 3 genres.
 
-### 7.3 SQL spot checks
+### 6.3 SQL spot checks
 
 ```sql
-SELECT * FROM recommendation WHERE profile_id = 1 ORDER BY relevance_score DESC;   -- the stored top picks
+SELECT genre_id, genre, taste_score FROM genre_taste WHERE profile_id = 1 ORDER BY taste_score DESC;   -- compare with 6.1
 EXPLAIN ANALYZE <the genre-taste / top-picks query>;                               -- should be milliseconds at this size
 ```
 
-Watch a recommended title to 95%: its `rec_status` becomes `WATCHED`, and it is gone from top picks on the next Home load.
+Watch a recommended title to 95%: it is gone from top picks on the next Home load.
 
 ---
 
-## 8. Implementation notes and pitfalls
+## 7. Implementation notes and pitfalls
 
 These are the traps you are most likely to hit while building Home. The plan's section 7 lists more.
 
-### 8.1 Mapping and types
+### 7.1 Mapping and types
 
 - `SUM`/`AVG` results and counts can arrive as strings (numeric): use `Number()`.
-- `watched_at`, `added_at`, `rated_at`, `generated_at` are ISO strings in the API (README 3.7).
+- `watched_at`, `added_at`, `rated_at` are ISO strings in the API (README 3.7).
 - Row ids: only `genre-picks-<genreId>` has a suffix; the others are plain kind names.
 - `HomeFeed.generatedAt` is an ISO string. `hero` is `null` only if the catalogue is empty or all filtered.
 
-### 8.2 Performance guardrails
+### 7.2 Performance guardrails
 
-- `recordProgress` is the hot write. Make no extra reads beyond the content-type lookup and, for series, the episode-belongs check. The `UPDATE recommendation` touches at most one row by PK.
-- Home is a handful of queries (the plan measured top picks at about 4 ms). Run independent ones with `Promise.all`, and load all the `ContentSummary` rows in one `loadSummaries` call at the end.
+- `recordProgress` is the hot write. Make no extra reads beyond the content-type lookup and, for series, the episode-belongs check, then the single upsert.
+- Home is a handful of queries (the plan measured top picks at about 4 ms). Run independent ones with `Promise.all`, and load all the `ContentSummary` rows in one `loadContentData` call at the end.
 - Do not run Home's queries in `getTitleActivity`.
 
-### 8.3 What not to do
+### 7.3 What not to do
 
-- Do not store reasons (no column exists, by design).
+- Do not store reasons or recommendations (no column or table exists, by design).
 - Do not use a plain sum or a plain average of a title's genre points: divide the sum by √(number of genres), or titles with many genres win every time.
 - Do not trust the client for `profileId` (the route already ties it to the session).
 - Do not reintroduce a `completed` column or flag: use `progress_percent >= 90` / `isCompleted`.
 
 ---
 
-## 9. Definition of done
+## 8. Definition of done
 
 Tick every box before you ask for review.
 
 - [ ] `activity.service.ts` and `recommendations.service.ts` import nothing from `@/server/mocks` (`grep -n "server/mocks" src/server/services/{activity,recommendations}.service.ts` is empty); `isCompleted`/`formatEpisodeCode` come from `@/lib/content/progress` and `@/lib/format`.
 - [ ] Every function matches its SQL, errors, transaction and idempotency notes above; typed errors only.
-- [ ] `getHomeFeed` runs the genre-taste engine from the plan (top picks, continue-watching, the 2 genre rows, cold start via the onboarding picks); `storeTopPicks` failures do not break the response.
-- [ ] curl checks pass (README section 4 and 7.2 here): progress (movie, series, wrong episode 422, unknown title 404, idempotent); history list/delete (second delete 404); my-list add twice 201/201 and remove twice; ratings 1-5, 6 -> 422, delete twice; titles/:id resume labels incl. "Play S1:E4" and `null` after a finale; home for profiles 1, 2, 3 and a new profile; another user's profile -> 404.
+- [ ] `getHomeFeed` runs the genre-taste engine from the plan (top picks, continue-watching, the 2 genre rows, cold start via the onboarding picks), all computed on every request and never stored.
+- [ ] curl checks pass (README section 4 and 6.2 here): progress (movie, series, wrong episode 422, unknown title 404, idempotent); history list/delete (second delete 404); my-list add twice 201/201 and remove twice; ratings 1-5, 6 -> 422, delete twice; titles/:id resume labels incl. "Play S1:E4" and `null` after a finale; home for profiles 1, 2, 3 and a new profile; another user's profile -> 404.
 - [ ] UI works: Home (hero, rows, reasons, match chips, continue-watching progress), the player's progress sync, History, My List, rating control, title page Play/Resume label.
 - [ ] The header comments of `recommendations.service.ts` and the Home route describe the real algorithm.
 - [ ] `npm run lint` and `npm run build` pass; route header comments updated where behaviour changed (e.g. `DELETE .../history/:historyId` is 404 on a second call).

@@ -7,7 +7,10 @@
  *           HomeRow = { id, kind, title, reason, items: { content, match?, progress? }[] }
  *           401 signed out · 404 unknown profile
  *
- * Calls: requireOwnedProfile → getHomeFeed (recommendations.service; the pipeline is specified there)
+ * Rows: continue-watching, top-picks (hero = first pick), then one row for each of the profile's 2 best genres.
+ *   Titles are ranked by the profile's genre taste (genre_taste view); a title never repeats across rows.
+ *
+ * Calls: requireOwnedProfile → getHomeFeed (recommendations.service)
  */
 import { requireOwnedProfile } from "@/app/api/_lib/auth";
 import { handleError } from "@/app/api/_lib/http";

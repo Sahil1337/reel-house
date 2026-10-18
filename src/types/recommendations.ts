@@ -49,17 +49,3 @@ export interface HomeFeed {
   rows: HomeRow[];
   generatedAt: string;
 }
-
-/** recommendation.rec_status — the feedback loop: the player and title page move SHOWN → CLICKED → WATCHED, or DISMISSED. */
-export type RecStatus = "SHOWN" | "CLICKED" | "WATCHED" | "DISMISSED";
-
-/** A recommendation row: PRIMARY KEY (profile_id, content_id). The reason text is computed, never stored. */
-export interface Recommendation {
-  profileId: number;
-  contentId: number;
-  /** The shelf it was ranked for, e.g. "top-picks". */
-  rowType: HomeRowKind;
-  relevanceScore: number;
-  generatedAt: string;
-  recStatus: RecStatus;
-}

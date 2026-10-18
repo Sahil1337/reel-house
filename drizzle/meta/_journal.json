@@ -15,6 +15,13 @@
       "when": 1792352856495,
       "tag": "0001_genre_taste_view",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792355615568,
+      "tag": "0002_drop_recommendation",
+      "breakpoints": true
     }
   ]
 }
