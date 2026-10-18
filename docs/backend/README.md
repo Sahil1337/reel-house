@@ -22,7 +22,7 @@ Services each person owns:
 - Yash (B) and Sahil (C) keep working against the mock-backed guards until Tejasva merges them.
 - Tejasva also writes `profile_genre_preference` (onboarding), which Sahil's cold start (the first recommendations for a profile with no history) reads.
 
-The schema itself is [`../schema/SCHEMA.md`](../schema/SCHEMA.md). It is the source of truth for tables, constraints, ranking formulas and the payment flow. The Drizzle schema in `src/server/db/schema/` and the two migrations in `drizzle/` already implement it. (Drizzle is the TypeScript database toolkit we use; a migration is a numbered SQL file that changes the database structure.)
+The schema itself is [`../schema/SCHEMA.md`](../schema/SCHEMA.md). It is the source of truth for tables, constraints, ranking formulas and the payment flow. The Drizzle schema in `src/server/db/schema/` and the three migrations (`drizzle/0000_schema.sql`, `drizzle/0001_genre_taste_view.sql` and `drizzle/0002_drop_recommendation.sql`) already implement it. (Drizzle is the TypeScript database toolkit we use; a migration is a numbered SQL file that changes the database structure.)
 
 ## Table of contents
 
@@ -113,7 +113,7 @@ data/
 docs/
   schema/                SCHEMA.md (the schema, source of truth) + schema-diagram.png/.svg
   backend/               this guide + one file per person
-drizzle/                 0000_schema.sql, 0001_functions_and_views.sql, 0002_fix_subscription_check.sql, meta/  (migrations; commit them)
+drizzle/                 0000_schema.sql (tables, maturity_of()), 0001_genre_taste_view.sql (the view), 0002_drop_recommendation.sql (16 tables left), meta/  (migrations; commit them)
 drizzle.config.ts
 scripts/
   import-tmdb.mts        TMDB -> data/tmdb (already works)
@@ -163,8 +163,8 @@ Some parts already work against the real database or real services. Others still
 - **`GET /api/admin/tmdb/search` and `GET /api/admin/tmdb/:type/:tmdbId`: real.**
   - They make live TMDB calls (`TMDB_API_KEY`) and generate the SQL preview for real (`src/lib/sql/import-title.ts`).
   - Only `markInCatalog` / `findCatalogueId` (database lookups) are stubs.
-- **`src/server/db` (Drizzle schema, `db`), `drizzle/` migrations 0000 and 0001, and the seed: real and already applied to Neon.**
-  - Tables, enums, `maturity_of()`, `interaction_score` and `content_similarity` exist, and the database is **seeded**.
+- **`src/server/db` (Drizzle schema, `db`), the `drizzle/0000_schema.sql`, `drizzle/0001_genre_taste_view.sql` and `drizzle/0002_drop_recommendation.sql` migrations, and the seed: real and already applied to Neon.**
+  - Tables, enums, `maturity_of()` and the `unaccent` extension and the `genre_taste` view exist, and the database is **seeded**.
   - Nothing queries them yet (the services still return mocks), so a service can read real rows the moment you implement it.
 - **Every other service function: stub.**
   - It has `// TODO: implement`, returns mock data from `src/server/mocks`, and persists nothing.
@@ -251,7 +251,7 @@ npm install -D drizzle-kit @types/pg
 npm install -D tsx          # runs the seed (src/server/db/seed); already added with the seed
 ```
 
-The driver is plain `pg` (node-postgres) over a `Pool`. It supports interactive transactions (`db.transaction`), `SELECT ... FOR UPDATE` and `REFRESH MATERIALIZED VIEW`. Neon's HTTP driver (`@neondatabase/serverless` + `drizzle-orm/neon-http`) does **not** support interactive transactions, which is why we do not use it.
+The driver is plain `pg` (node-postgres) over a `Pool`. It supports interactive transactions (`db.transaction`), and `SELECT ... FOR UPDATE`. Neon's HTTP driver (`@neondatabase/serverless` + `drizzle-orm/neon-http`) does **not** support interactive transactions, which is why we do not use it.
 
 ### 2.4 `drizzle.config.ts` (already in the repo)
 
@@ -281,17 +281,15 @@ export default defineConfig({
 
 The schema is split into one file per area.
 
-- **`enums.ts`:** `userRole`, `maturityLevel` (declared order KIDS < TEEN < ADULT), `contentType`, `creditRole`, `subscriptionStatus`, `paymentMode`, `paymentStatus`, `recStatus`.
+- **`enums.ts`:** `userRole`, `maturityLevel` (declared order KIDS < TEEN < ADULT), `contentType`, `creditRole`, `subscriptionStatus`, `paymentMode`, `paymentStatus`.
 - **`accounts.ts`:** `users`, `profile`, `profileGenrePreference` (+ relations).
 - **`billing.ts`:** `subscriptionPlan`, `subscription`, `payment`.
 - **`catalog.ts`:** `genre`, `content`, `contentGenre`, `season`, `episode`, `person`, `contentCredit`.
 - **`activity.ts`:** `watchHistory`, `myList`, `rating`.
-- **`recommendations.ts`:** `recommendation`, plus `interactionScore` (`pgView(...).existing()`) and `contentSimilarity` (`pgMaterializedView(...).existing()`).
-  - `.existing()` means the view is only _declared_ for typing. Its SQL lives in migration 0001.
-  - A materialized view is a saved query result stored like a table, refreshed on demand.
+- **`recommendations.ts`:** the `genreTaste` view only (recommendations are never stored, so there is no table), declared with `pgView("genre_taste", …).existing()` (the view is created by `drizzle/0001_genre_taste_view.sql`; `.existing()` stops drizzle-kit from generating SQL for it). Similarity queries read the base tables directly.
 - **`index.ts`:** barrel (a file that re-exports everything) for all of the above.
 
-Table object names (camelCase TS) map to tables as follows: `users`, `profile`, `profileGenrePreference` (`profile_genre_preference`), `subscriptionPlan` (`subscription_plan`), `subscription`, `payment`, `genre`, `content`, `contentGenre`, `season`, `episode`, `person`, `contentCredit`, `watchHistory`, `myList`, `rating`, `recommendation`.
+Table object names (camelCase TS) map to tables as follows: `users`, `profile`, `profileGenrePreference` (`profile_genre_preference`), `subscriptionPlan` (`subscription_plan`), `subscription`, `payment`, `genre`, `content`, `contentGenre`, `season`, `episode`, `person`, `contentCredit`, `watchHistory`, `myList`, `rating`.
 
 **Named constraints** you will need in `ON CONFLICT ON CONSTRAINT` (the SQL clause that says what to do when an insert collides with a unique rule) or in error handling:
 
@@ -304,7 +302,6 @@ Table object names (camelCase TS) map to tables as follows: `users`, `profile`, 
 - `season_content_number_key`.
 - `episode_season_number_key`.
 - `watch_history_profile_content_episode_key`.
-- `content_similarity_pair_key`.
 
 ### 2.6 The client (`src/server/db/index.ts`, already in the repo)
 
@@ -355,10 +352,11 @@ The raw pool is `db.$client` (a `pg.Pool`). Use it where you need `$n` placehold
 
 A migration is a numbered SQL file that moves the database from one structure to the next. Following the same steps every time keeps the three of us from clashing.
 
-Existing migrations:
+The three existing migrations:
 
-- `drizzle/0000_schema.sql`: tables, enums, constraints and indexes generated by drizzle-kit.
-- `drizzle/0001_functions_and_views.sql`: custom. It holds `maturity_of()`, the `interaction_score` view, the `content_similarity` materialized view and its unique index.
+- `drizzle/0000_schema.sql`: the tables (17 at that point; 16 after 0002). Enums, constraints and indexes (including the corrected `subscription_dates_check`), the `maturity_of()` function and `CREATE EXTENSION unaccent`.
+- `drizzle/0001_genre_taste_view.sql`: the `genre_taste` view (per-profile, per-genre taste scores). Hand-written SQL, because drizzle-kit does not generate a view from `pgView(...).existing()`.
+- `drizzle/0002_drop_recommendation.sql`: drops the `recommendation` table and the `rec_status` enum. Home is computed on every request from `genre_taste`, and nothing ever read the stored rows. This leaves 16 tables.
 - `drizzle/meta/` is drizzle-kit's bookkeeping. Commit it.
 
 Daily commands (all are npm scripts in `package.json`):
@@ -382,13 +380,12 @@ The seed runs through `tsx` because the schema files import each other without f
    - `ON DELETE` actions.
 3. Anything drizzle-kit does not emit correctly goes into a **custom migration**.
    - `npx drizzle-kit generate --custom --name=<what>` creates an empty `NNNN_<what>.sql`. Write plain SQL there, separating statements with `--> statement-breakpoint`.
-   - Typical contents: functions (`maturity_of`), views and materialized views, `CREATE EXTENSION`, triggers, and indexes with expressions or `NULLS NOT DISTINCT` that the generator mangles.
-   - Views you create by hand are declared in the schema with `.existing()` so the generator does not try to create them again.
+   - Typical contents: functions (`maturity_of`), `CREATE EXTENSION`, triggers, and indexes with expressions or `NULLS NOT DISTINCT` that the generator mangles.
 4. Run `npm run db:migrate` on **your** branch, test, then commit the schema, the SQL and `drizzle/meta/`.
 5. Never edit a migration that has been merged. Add a new one.
 6. Two people generating a migration in parallel produce clashing numbers and `_journal.json` edits. The rule: a schema PR is merged before the next one is generated. If you collide, delete your generated `NNNN_*.sql` and snapshot, rebase onto `main`, and run `db:generate` again.
 
-Migration `0002_fix_subscription_check` (applied) enables the `unaccent` extension used by `searchContent`. It also relaxes `subscription_dates_check` so a never-paid checkout can be CANCELLED without dates (see section 7.3).
+`0000_schema.sql` (applied) also enables the `unaccent` extension used by `searchContent`, and its `subscription_dates_check` lets a never-paid checkout be CANCELLED without dates (see section 7.3).
 
 ### 2.8 The seed (already done)
 
@@ -405,15 +402,14 @@ The seed fills the database with the demo catalogue, accounts and activity. It l
 - Mock rows reference a title as `{ contentType, tmdbId }`, an episode as `seasonNumber` + `episodeNumber`, and a genre pick by genre name.
 - The seed matches those to the snapshot, inserts by natural key and keeps the returned ids in maps.
 - Insert order: genre, person, content, content_genre, content_credit, season, episode, users, profile, profile_genre_preference, subscription_plan, subscription, payment, watch_history, my_list, rating.
-- `content_similarity` is refreshed at the end so the kNN view (nearest-neighbour similarity data) is populated.
 
 **Reset behaviour.**
 
-- It **resets the tables before inserting**: all 17 tables are truncated with `RESTART IDENTITY CASCADE` (restart id counters, and also empty any table that points at them).
+- It **resets the tables before inserting**: all 16 tables are truncated with `RESTART IDENTITY CASCADE` (restart id counters, and also empty any table that points at them).
 - Then everything is inserted **in one transaction** (a failure leaves the database unchanged), so re-running `npm run db:seed` always gives the same clean, known state.
 - Identity ids are never inserted explicitly. Rows are inserted, ids are read back with `RETURNING`, and snapshot/mock keys are mapped to them in memory.
 - It inserts in the same order as `src/server/mocks` assigns ids (genres in snapshot = alphabetical order, movies before series, mock users/profiles/subscriptions/payments by their file ids, history by `watched_at`). So the ids normally match the mock layer's. The curl examples in section 4 rely on that, so confirm with a quick query if something looks off.
-- No `recommendation` rows are created (the pipeline generates them later).
+- Nothing is seeded for recommendations: they are never stored, and Home computes them from `genre_taste` on every request.
 - Run it on your own Neon branch only. It destroys whatever you inserted by hand.
 
 To change demo data, edit `data/mock/*.json` and re-run the seed. To make a new password hash for `users.json`:
@@ -436,7 +432,7 @@ These are the shared rules for how we write services, handle errors, use transac
   - The service validates _rules that need the database_ (exists, owned, limit, unique, belongs to) and throws a typed error.
   - Services still defensively clamp (e.g. `progressPercent`) where the CHECK is only a backstop.
 - A service never trusts the caller for money or ownership. Prices come from `subscription_plan`, and ownership comes from `user_id`/`profile_id` predicates.
-- Keep one place per rule: weights in `WEIGHTS` (recommendations), thresholds in `@/lib/constants` (`MAX_PROFILES`, `ONBOARDING_MIN_GENRES`, `COMPLETED_THRESHOLD`), reasons in `REASONS`.
+- Keep one place per rule: thresholds in `@/lib/constants` (`MAX_PROFILES`, `ONBOARDING_MIN_GENRES`, `COMPLETED_THRESHOLD`), reasons in `REASONS`.
 
 ### 3.2 Database errors to typed errors
 
@@ -482,20 +478,12 @@ Where we use them (`FOR UPDATE` locks the selected rows so nobody else can chang
 - **`recordCapturedPayment`**
   - Why: the payment insert and the subscription state change go together.
   - Lock: `SELECT ... FROM subscription ... FOR UPDATE`.
-- **`recordProgress`**
-  - Why: the upsert and the `rec_status` update go together. (An upsert is "insert, or update if it already exists".)
-  - Lock: none.
-- **`storeRecommendations`**
-  - Why: the upserts and the stale delete go together.
-  - Lock: none.
 - **`importTitle`**
   - Why: the whole title is imported or nothing.
   - Lock: a dedicated client with explicit `BEGIN`/`COMMIT` statements.
 - **`getContentDetail`, `getDashboard`**
   - Why: optional, to get one consistent snapshot.
   - Lock: `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY`.
-
-`REFRESH MATERIALIZED VIEW CONCURRENTLY` cannot run inside a transaction block. Call it on `db` directly.
 
 ### 3.4 Auth helpers and ownership
 
@@ -531,7 +519,6 @@ An operation is idempotent when running it twice has the same effect as running 
 - **Failed payment:** the same, with status `FAILED`.
 - **TMDB import:** every statement is an upsert on a natural key.
 - **Seed:** truncates first, so a re-run always ends in the same state.
-- **`storeRecommendations`:** upsert on `(profile_id, content_id)`. `rec_status` is deliberately not overwritten.
 - **Not idempotent by design:** `createUser`, `createProfile`, `createPendingSubscription`, `removeHistoryEntry` (the 2nd call is 404), `createRazorpayOrder`.
 
 ### 3.6 Money
@@ -916,18 +903,15 @@ Phase 1 is the schema work. It is done together, before anyone starts Phase 2. T
 
 ### 7.1 Decided
 
-- [x] 17 tables, 1 view, 1 materialized view. CONTENT_CAST + CONTENT_DIRECTOR are merged into `content_credit` (`role` = `ACTOR` / `DIRECTOR`). Extra tables: `profile_genre_preference`, `recommendation`.
+- [x] 16 tables and one view, `genre_taste`. CONTENT_CAST + CONTENT_DIRECTOR are merged into `content_credit` (`role` = `ACTOR` / `DIRECTOR`). Extra table: `profile_genre_preference`.
 - [x] `users` as the table name (`user` is reserved), with `role` (`USER` / `ADMIN`).
 - [x] Surrogate keys (generated ids) are `INT GENERATED ALWAYS AS IDENTITY`. Natural keys are UNIQUE (`email` case-insensitively; `content (title, content_type, release_date)` and `person (name, date_of_birth)` as `NULLS NOT DISTINCT`).
 - [x] TMDB ids are **not** stored. Import and seed find rows by natural keys.
 - [x] `watch_history`: one row per (profile, title, episode), `episode_id` nullable, `UNIQUE NULLS NOT DISTINCT`.
 - [x] **Dropped `watch_history.completed`.** Completed means `progress_percent >= 90` (SQL) / `isCompleted()` with `COMPLETED_THRESHOLD` (TS).
-- [x] **`recommendation` re-keyed.**
-  - PK is `(profile_id, content_id)`.
-  - **Dropped `recommendation_id`, `source_content_id`, `reason`.**
-  - Reason strings are computed in `buildHomeRows`.
-  - The "Because you liked X" anchor is computed from `content_similarity` and returned as `HomeRow.anchor`.
-  - `rec_status` is the feedback loop.
+- [x] **`recommendation` table dropped** (`drizzle/0002_drop_recommendation.sql`, which also drops the `rec_status` enum).
+  - Home is computed on every request from the `genre_taste` view; nothing ever read stored recommendations.
+  - There is no stored top-picks list and no feedback loop. Reason strings are computed when Home is built.
 - [x] **Dropped `profile.preferred_language`** (no language data in the catalogue to filter on).
 - [x] **Explicitly kept:**
   - `profile.onboarded_at` (NULL until onboarding is done; `Profile.onboardingCompleted` = `onboarded_at IS NOT NULL`).
@@ -939,21 +923,20 @@ Phase 1 is the schema work. It is done together, before anyone starts Phase 2. T
 - [x] Payments use Razorpay. `subscription` is the order's local counterpart (PENDING until captured). `payment` is one row per attempt, idempotent on `transaction_ref`.
 - [x] Billing foreign keys are `ON DELETE RESTRICT` (deleting a referenced row is refused). Everything profile-scoped is `ON DELETE CASCADE` (deleting the profile deletes its rows too).
 - [x] Drizzle ORM + `drizzle-kit` migrations on Neon, `pg` Pool driver.
-- [x] Drizzle schema (`src/server/db/schema/*.ts`), `drizzle.config.ts`, first migration `0000_schema.sql`, custom migration `0001_functions_and_views.sql`, client `src/server/db/index.ts`.
-- [x] Ranking by weighted score (signals -> candidates -> blend), no trained model (pending the teacher's confirmation, below).
+- [x] Drizzle schema (`src/server/db/schema/*.ts`), `drizzle.config.ts`, the three migrations `0000_schema.sql` (tables, `maturity_of()`, `unaccent`), `0001_genre_taste_view.sql` (the `genre_taste` view) and `0002_drop_recommendation.sql`, client `src/server/db/index.ts`.
+- [x] One view, `genre_taste`. Recommendations are a one-layer engine (genre taste read from the view, ties broken by release date), with no trained model (pending the teacher's confirmation, below). Spec: `plans/activity-recommendations/plan.md`.
 
 ### 7.2 Still open (from SCHEMA.md "Still open")
 
 - [ ] Review every table, constraint and index in `SCHEMA.md` together (all three, once).
-- [ ] `recommendation` refresh policy and `content_similarity` refresh cadence (recommended default in section 9, item 1).
-- [ ] Weighted ranking (current plan) vs a small trained model: check with the teacher.
+- [ ] Genre-taste ranking (current plan) vs a small trained model: check with the teacher.
 - [ ] Short column names (current) or the domain's exact names (`SCHEMA.md` "Domain names -> column names").
 - [x] The Neon database has the migrations and the seed applied (re-run with `npm run db:migrate` / `npm run db:seed` on your own branch if you reset it).
 
 ### 7.3 Found while writing this plan (fix in the Phase 1 PR)
 
-- [x] **`subscription_dates_check` relaxed** (migration `0002`). The new rule is `CHECK ((status IN ('PENDING','CANCELLED') AND start_date IS NULL AND end_date IS NULL) OR (start_date IS NOT NULL AND end_date > start_date))`, so cancelling an unpaid PENDING checkout is allowed. `billing.ts` and `SCHEMA.md` match.
-- [x] **`unaccent` extension** created by migration `0002` (`CREATE EXTENSION IF NOT EXISTS unaccent`).
+- [x] **`subscription_dates_check` relaxed** (now in `0000_schema.sql`). The new rule is `CHECK ((status IN ('PENDING','CANCELLED') AND start_date IS NULL AND end_date IS NULL) OR (start_date IS NOT NULL AND end_date > start_date))`, so cancelling an unpaid PENDING checkout is allowed. `billing.ts` and `SCHEMA.md` match.
+- [x] **`unaccent` extension** created in `0000_schema.sql` (`CREATE EXTENSION IF NOT EXISTS unaccent`).
 - [ ] `payment_mode` only covers CARD / UPI / NET_BANKING / WALLET. Razorpay also reports `emi`, `paylater`, `cardless_emi`. Decide: extend the enum or ignore those events (current text: ignore + log).
 - [ ] Indexes the admin dashboard comment suggests as data grows: `payment (payment_date DESC)`, `payment (status, payment_date)`, `subscription (plan_id, status)`, `watch_history (content_id)`. `watch_history (profile_id, content_id)` is already covered by the unique key.
 - [ ] Optional `pg_trgm` GIN index on `content.title` / `person.name` if `ILIKE '%q%'` gets slow (500 titles do not need it).
@@ -1013,10 +996,10 @@ A PR that makes `findUserById` / `getOwnedProfile` real (the guard swap) is anno
 - **Day 1-2, Yash (B) and Sahil (C):** Create your Neon branches from the already-seeded `main`. Read your specs and start writing code against the seeded ids, using the mock-backed guards until Tejasva merges.
 - **Day 2-5, Tejasva (A):** Catalogue reads (`listGenres`, `getContentDetail`, `searchContent`), then admin (`markInCatalog`, `findCatalogueId`, `getDashboard`, `importTitle`).
 - **Day 2-5, Yash (B):** Billing reads (`listPlans`, `getPlan`, `getActiveSubscription`, `listSubscriptions`, `listPayments`), `createPendingSubscription`, Razorpay test-mode setup.
-- **Day 2-5, Sahil (C):** `activity.service` (my list, ratings, progress, history, title activity), then `interaction_score` checks.
+- **Day 2-5, Sahil (C):** `activity.service` (my list, ratings, progress, history, title activity), then a check that ratings and progress change the genre taste.
 - **Day 6-8, Yash (B):** Razorpay: order, verify, webhook, test-mode run with a tunnel.
-- **Day 6-9, Sahil (C):** Recommendation pipeline stage by stage. `content_similarity` refresh. Refresh policy.
-- **Day 6-8, Tejasva (A):** `getSimilarTitles` (needs Sahil's `content_similarity` data), auth hardening (dummy hash, rate limit, hashing and session decisions), index/perf pass, dashboard polish.
+- **Day 6-9, Sahil (C):** Recommendations: the genre-taste engine (top picks, genre rows), built from `plans/activity-recommendations/plan.md`.
+- **Day 6-8, Tejasva (A):** `getSimilarTitles` (shared-genre self-join, no dependency on Sahil), auth hardening (dummy hash, rate limit, hashing and session decisions), index/perf pass, dashboard polish.
 - **Day 9-10, all:** Integration: UI flows end to end, delete `src/server/mocks`, README cleanup, report/demo script.
 
 ---
@@ -1025,36 +1008,25 @@ A PR that makes `findUserById` / `getOwnedProfile` real (the guard swap) is anno
 
 These are questions the team has not settled yet. Each has a recommended default. Implement the default unless the team decides otherwise.
 
-1. **Recommendation refresh policy** (`shouldRefreshRecommendations`). Owner: C.
-   - Options: after every activity write; on Home load when stale; nightly.
-   - _Default (as written in the service):_ regenerate on Home load when the newest `generated_at` is older than 15 minutes **or** older than the profile's latest activity (`greatest(max(watched_at), max(rated_at), max(added_at), onboarded_at)`).
-   - If a mid-binge profile reruns the pipeline too often, drop the `watch_history` term and keep ratings/My List/onboarding only.
-2. **`content_similarity` refresh.** Owner: C.
-   - _Default:_ `REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity` after the seed and nightly.
-   - The first ever refresh must be non-concurrent (`REFRESH MATERIALIZED VIEW content_similarity;`) on a populated view.
-   - Mechanism: an npm script now (`db:refresh-similarity`), and a CRON_SECRET-guarded route for Vercel Cron if/when deployed.
-   - Nothing calls `refreshContentSimilarity()` yet.
-3. **Ranking model:** weighted blend (current) vs a small trained model. Confirm with the teacher. No code depends on the answer yet.
-4. **Column names:** keep the short snake_case names (current) or switch to the domain's exact ones.
-5. **Sessions.** Owner: Tejasva (A).
+1. **Ranking model:** genre-taste ranking (current) vs a small trained model. Confirm with the teacher. No code depends on the answer yet.
+2. **Column names:** keep the short snake_case names (current) or switch to the domain's exact ones.
+3. **Sessions.** Owner: Tejasva (A).
    - Stateless signed cookie (today) vs a `session` table (revocation, sign-out everywhere, expiry).
    - Default: keep the cookie for the demo. Add the table only if time allows.
-6. **Password hashing.** Owner: Tejasva (A).
+4. **Password hashing.** Owner: Tejasva (A).
    - Keep Node scrypt (acceptable, no dependency, `timingSafeEqual`) with a tunable cost, or move to argon2id/bcrypt.
    - Either way, keep the stored format versioned (the `scrypt$...` prefix lets both coexist).
-7. **Same-plan checkout.** Owner: Yash (B).
+5. **Same-plan checkout.** Owner: Yash (B).
    - The route documents "409 already ACTIVE on that plan (unless renewing)".
    - `createPendingSubscription` treats the same plan as a **renewal** (returns the ACTIVE row, no 409).
    - Default: renewal. Update the route comment.
-8. **Subscription expiry.** Owner: Yash (B).
+6. **Subscription expiry.** Owner: Yash (B).
    - Nothing flips ACTIVE rows past `end_date` to EXPIRED.
    - Default: lazy expiry inside `getActiveSubscription` (`UPDATE ... SET status='EXPIRED' WHERE user_id = $1 AND status='ACTIVE' AND end_date < now()` before the select), or treat `end_date < now()` as no plan. A nightly job is optional.
-9. **Plan change proration:** a capture on a new plan cancels the old ACTIVE row at `now()` (remaining days are lost). Default: accept for the project, and document it.
-10. **Refunds:** `payment_status` has REFUNDED but no code path writes it (`refund.processed` is not handled). Default: out of scope. The admin can refund in the Razorpay dashboard.
-11. **Unsupported payment methods** (`emi`, `paylater`): ignore + log vs extend `payment_mode`. Default: ignore + log.
-12. **Abandoned checkouts:** PENDING rows are cancelled at the user's next checkout. Optional cleanup of stale PENDING rows older than a day.
-13. **`DISMISSED` has no writer.** No route lets a user dismiss a recommendation. `rec_status` only moves SHOWN -> CLICKED -> WATCHED today. Default: leave `DISMISSED` unused in the UI, and keep the filter.
-14. **CLICKED on title-page view:** this would be a write on a GET. Default: no. `recordProgress` already covers the player.
-15. **Full sync on re-import:** re-imports add and refresh but never remove stale genres/credits. Default: keep additive. For a full sync, run `DELETE FROM content_genre / content_credit WHERE content_id = $1` right after the content upsert, inside the transaction.
-16. **Consistent snapshots:** `getContentDetail` and `getDashboard` may run in `REPEATABLE READ READ ONLY`. Default: plain queries (no one writes the catalogue at the same moment in the demo).
-17. **Shared helpers location** (pg error mapping, `toIso`, `toNumber`): propose `src/server/db/helpers.ts` in the Phase 1 PR.
+7. **Plan change proration:** a capture on a new plan cancels the old ACTIVE row at `now()` (remaining days are lost). Default: accept for the project, and document it.
+8. **Refunds:** `payment_status` has REFUNDED but no code path writes it (`refund.processed` is not handled). Default: out of scope. The admin can refund in the Razorpay dashboard.
+9. **Unsupported payment methods** (`emi`, `paylater`): ignore + log vs extend `payment_mode`. Default: ignore + log.
+10. **Abandoned checkouts:** PENDING rows are cancelled at the user's next checkout. Optional cleanup of stale PENDING rows older than a day.
+11. **Full sync on re-import:** re-imports add and refresh but never remove stale genres/credits. Default: keep additive. For a full sync, run `DELETE FROM content_genre / content_credit WHERE content_id = $1` right after the content upsert, inside the transaction.
+12. **Consistent snapshots:** `getContentDetail` and `getDashboard` may run in `REPEATABLE READ READ ONLY`. Default: plain queries (no one writes the catalogue at the same moment in the demo).
+13. **Shared helpers location** (pg error mapping, `toIso`, `toNumber`): propose `src/server/db/helpers.ts` in the Phase 1 PR.

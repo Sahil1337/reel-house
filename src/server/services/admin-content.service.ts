@@ -4,7 +4,7 @@
  * list, update and delete the rows it created.
  *
  * Tables it reads: content, content_genre, genre, season, episode, content_credit, watch_history, my_list,
- * rating, recommendation. It writes content (UPDATE, DELETE); a DELETE cascades to the child tables.
+ * rating. It writes content (UPDATE, DELETE); a DELETE cascades to the child tables.
  *
  * Exports:
  *   listContentForAdmin(filters)          GET    /api/admin/content
@@ -135,7 +135,7 @@ export async function listContentForAdmin(filters: AdminContentFilters): Promise
  *      consistent statement snapshot).
  *   2. No row: NotFoundError. Otherwise map to { contentId, title, contentType, counts }, counts keyed by
  *      the child table name (content_genre, content_credit, season, episode, watch_history, my_list,
- *      rating, recommendation).
+ *      rating).
  * SQL:
  *   SELECT
  *     c.content_id, c.title, c.content_type,
@@ -146,28 +146,25 @@ export async function listContentForAdmin(filters: AdminContentFilters): Promise
  *       WHERE s.content_id = c.content_id)                                     AS episode,
  *     (SELECT COUNT(*) FROM watch_history   WHERE content_id = c.content_id) AS watch_history,
  *     (SELECT COUNT(*) FROM my_list         WHERE content_id = c.content_id) AS my_list,
- *     (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating,
- *     (SELECT COUNT(*) FROM recommendation  WHERE content_id = c.content_id) AS recommendation
+ *     (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating
  *   FROM content AS c
  *   WHERE c.content_id = $1;
- * Tables: content, content_genre, content_credit, season, episode, watch_history, my_list, rating,
- *   recommendation  ·  Keys/constraints relied on: every child's FK to content is ON DELETE CASCADE
+ * Tables: content, content_genre, content_credit, season, episode, watch_history, my_list, rating
+ *   ·  Keys/constraints relied on: every child's FK to content is ON DELETE CASCADE
  *   (episode through season; watch_history carries content_id AND episode_id, so an episode's history is
  *   counted once, by content_id). Indexes: content_genre PK, content_credit PK, season UNIQUE and
- *   rating_content_idx serve the counts; watch_history, my_list and recommendation need a plain index on
+ *   rating_content_idx serve the counts; watch_history and my_list need a plain index on
  *   content_id (their keys lead with profile_id) — the same indexes make the cascading DELETE itself fast,
  *   because Postgres finds the child rows through the FK column: add
  *   CREATE INDEX watch_history_content_idx ON watch_history (content_id);
  *   CREATE INDEX my_list_content_idx ON my_list (content_id);
- *   CREATE INDEX recommendation_content_idx ON recommendation (content_id);
  * Transaction: no  ·  Idempotent: yes (read-only)
  * Edge cases: the counts are a preview; rows added between this call and the delete are removed too. A
  *   movie has season 0 and episode 0. Zero everywhere is valid (a title nobody has touched).
  * Throws: NotFoundError("Title not found.") when the id doesn't exist.
  * Called by: GET /api/admin/content/:contentId/impact
  * Mock today: counts the mock title's genres, cast plus directors, seasons and episodes, and the
- *   db.watchHistory / db.myList / db.ratings rows with its contentId. recommendation has no mock rows, so it
- *   returns a fixed pseudo-count, (contentId * 7) % 5, to show a plausible number.
+ *   db.watchHistory / db.myList / db.ratings rows with its contentId.
  */
 export async function getContentDeletionImpact(contentId: number): Promise<ContentDeletionImpact> {
   // TODO: implement
@@ -187,7 +184,6 @@ export async function getContentDeletionImpact(contentId: number): Promise<Conte
       watch_history: db.watchHistory.filter((row) => row.contentId === contentId).length,
       my_list: db.myList.filter((row) => row.contentId === contentId).length,
       rating: db.ratings.filter((row) => row.contentId === contentId).length,
-      recommendation: (contentId * 7) % 5,
     },
   };
 }
@@ -203,11 +199,9 @@ export async function getContentDeletionImpact(contentId: number): Promise<Conte
  *   DELETE FROM content WHERE content_id = $1;
  * Tables: content (and by cascade the tables below)  ·  Keys/constraints relied on: ON DELETE CASCADE from
  *   content_genre, content_credit, season (and episode through season_id), watch_history (by content_id and
- *   by episode_id), my_list, rating and recommendation. NOT deleted: person rows (a person credited only on
+ *   by episode_id), my_list and rating. NOT deleted: person rows (a person credited only on
  *   this title stays as an orphan; nothing in the app lists people on their own) and genre rows
- *   (genres are shared lookups, a genre may end up with no titles). The content_similarity materialized view
- *   keeps the removed title's rows until its next REFRESH, but every query that serves them joins content,
- *   so they never surface.
+ *   (genres are shared lookups, a genre may end up with no titles).
  * Transaction: no (one statement)  ·  Idempotent: no, but safe to repeat: the second call finds nothing and
  *   answers 404, with nothing else changed.
  * Edge cases: a profile watching the title loses its watch_history row, my_list entry and rating, and

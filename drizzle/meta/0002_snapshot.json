@@ -1,6 +1,6 @@
 {
-  "id": "33a1c732-2762-4ff7-bf28-5b3054a79a0b",
-  "prevId": "d022747e-9510-4352-9f4b-7a0ab246672f",
+  "id": "4e1da732-fed9-485c-91a6-67d32d1f6076",
+  "prevId": "769f4b1b-2d11-4078-badf-08417ca11ad2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1427,115 +1427,6 @@
         }
       },
       "isRLSEnabled": false
-    },
-    "public.recommendation": {
-      "name": "recommendation",
-      "schema": "",
-      "columns": {
-        "profile_id": {
-          "name": "profile_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content_id": {
-          "name": "content_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "row_type": {
-          "name": "row_type",
-          "type": "varchar(30)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "relevance_score": {
-          "name": "relevance_score",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "generated_at": {
-          "name": "generated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "rec_status": {
-          "name": "rec_status",
-          "type": "rec_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'SHOWN'"
-        }
-      },
-      "indexes": {
-        "recommendation_rank_idx": {
-          "name": "recommendation_rank_idx",
-          "columns": [
-            {
-              "expression": "profile_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "relevance_score",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "first"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "recommendation_profile_id_profile_profile_id_fk": {
-          "name": "recommendation_profile_id_profile_profile_id_fk",
-          "tableFrom": "recommendation",
-          "tableTo": "profile",
-          "columnsFrom": [
-            "profile_id"
-          ],
-          "columnsTo": [
-            "profile_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "recommendation_content_id_content_content_id_fk": {
-          "name": "recommendation_content_id_content_content_id_fk",
-          "tableFrom": "recommendation",
-          "tableTo": "content",
-          "columnsFrom": [
-            "content_id"
-          ],
-          "columnsTo": [
-            "content_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "recommendation_profile_id_content_id_pk": {
-          "name": "recommendation_profile_id_content_id_pk",
-          "columns": [
-            "profile_id",
-            "content_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -1583,16 +1474,6 @@
         "REFUNDED"
       ]
     },
-    "public.rec_status": {
-      "name": "rec_status",
-      "schema": "public",
-      "values": [
-        "SHOWN",
-        "CLICKED",
-        "WATCHED",
-        "DISMISSED"
-      ]
-    },
     "public.subscription_status": {
       "name": "subscription_status",
       "schema": "public",
@@ -1617,7 +1498,7 @@
   "roles": {},
   "policies": {},
   "views": {
-    "public.interaction_score": {
+    "public.genre_taste": {
       "columns": {
         "profileId": {
           "name": "profileId",
@@ -1625,49 +1506,53 @@
           "primaryKey": false,
           "notNull": true
         },
-        "contentId": {
-          "name": "contentId",
+        "genreId": {
+          "name": "genreId",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
-        "score": {
-          "name": "score",
+        "genre": {
+          "name": "genre",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "watchScore": {
+          "name": "watchScore",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ratingScore": {
+          "name": "ratingScore",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "myListScore": {
+          "name": "myListScore",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pickScore": {
+          "name": "pickScore",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tasteScore": {
+          "name": "tasteScore",
           "type": "numeric",
           "primaryKey": false,
           "notNull": true
         }
       },
-      "name": "interaction_score",
+      "name": "genre_taste",
       "schema": "public",
       "isExisting": true,
       "materialized": false
-    },
-    "public.content_similarity": {
-      "columns": {
-        "contentA": {
-          "name": "contentA",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "contentB": {
-          "name": "contentB",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "score": {
-          "name": "score",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "name": "content_similarity",
-      "schema": "public",
-      "isExisting": true,
-      "materialized": true
     }
   },
   "_meta": {

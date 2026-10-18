@@ -1,9 +1,11 @@
 # Database schema
 
 This is the agreed database design for Phase 1 (see the [backend guide](../backend/README.md)). It
-runs on PostgreSQL 15+ (hosted on Neon) and has 17 tables, 1 view and 1 materialized view (a view
-whose result is stored on disk and refreshed on demand). Every table is in 3NF (third normal form,
-explained in [Normalisation notes](#normalisation-notes-for-the-report)).
+runs on PostgreSQL 15+ (hosted on Neon) and has 16 tables, one view (`genre_taste`) and one SQL
+function (`maturity_of()`). They are created by three migrations: `drizzle/0000_schema.sql` (the
+tables, constraints, indexes, `maturity_of()` and the `unaccent` extension),
+`drizzle/0001_genre_taste_view.sql` (the view) and `drizzle/0002_drop_recommendation.sql` (drops
+the `recommendation` table and its `rec_status` enum, which were never read). Every table is in 3NF (third normal form, explained in [Normalisation notes](#normalisation-notes-for-the-report)).
 
 ![Relational schema](schema-diagram.png)
 
@@ -17,7 +19,7 @@ explained in [Normalisation notes](#normalisation-notes-for-the-report)).
   - [Account and billing](#account--billing)
   - [Content catalogue](#content-catalogue) (including [Natural keys](#natural-keys) and [Credits](#credits))
   - [Viewing activity](#viewing-activity)
-  - [Recommendations](#recommendations)
+  - [genre_taste (view)](#genre_taste-view)
 - [Ranking](#ranking)
 - [Payment flow](#payment-flow)
 - [Normalisation notes](#normalisation-notes-for-the-report)
@@ -28,8 +30,8 @@ explained in [Normalisation notes](#normalisation-notes-for-the-report)).
 ## What changed from the domain description
 
 The domain description lists 16 entities. We merge CONTENT_CAST and CONTENT_DIRECTOR into one
-`content_credit` table (16 - 1 = 15) and add two tables, `profile_genre_preference` and
-`recommendation` (15 + 2 = 17). Everything that differs from the domain description:
+`content_credit` table (16 - 1 = 15) and add one table, `profile_genre_preference`
+(15 + 1 = 16). Everything that differs from the domain description:
 
 - **`content_credit`** replaces CONTENT_CAST and CONTENT_DIRECTOR. One credits table with a `role`
   column, so a new credit type is a new enum value, not a new table (see [Credits](#credits)).
@@ -37,10 +39,9 @@ The domain description lists 16 entities. We merge CONTENT_CAST and CONTENT_DIRE
   it, and is never stored.
 - **`profile_genre_preference`.** The genres a user picks during onboarding. They are the
   cold-start input for recommendations (what we know about a profile before it has any activity).
-- **`recommendation`.** The recommendation pipeline's stored output: one row per (profile, title),
-  with a feedback status.
-- **`interaction_score` view and `content_similarity` materialized view.** Stage 1 and the
-  item-kNN (item-to-item nearest-neighbour similarity) stage of the recommendation pipeline.
+- **One view, `genre_taste`.** It turns the four taste signals (`watch_history`, `rating`,
+  `my_list`, `profile_genre_preference`) into a score per profile and genre. "More like this"
+  queries the base tables directly. See [Genre taste (view)](#genre_taste-view) and [Ranking](#ranking).
 - **`users.role`, `watch_history.episode_id`, and image URLs** on `content`, `person` and
   `episode`. They support the admin panel, episode-level progress and real catalogue data.
 
@@ -50,11 +51,11 @@ Each bullet is one design choice and the reason behind it.
 
 - **Table name `users`.** `user` is a reserved word in PostgreSQL.
 - **Recommendations.**
-  - They are stored per profile in `recommendation`, keyed `(profile_id, content_id)`, and
-    refreshed after activity.
-  - `rec_status` is the feedback loop.
-  - A row's reason text and the "Because you liked X" anchor are computed when Home is built,
-    never stored.
+  - Home is computed on every request from the `genre_taste` view and the base tables. Results are
+    never stored: there is no `recommendation` table and no feedback status. (An earlier design
+    stored the top picks with a `rec_status`; nothing ever read them, so
+    `drizzle/0002_drop_recommendation.sql` dropped the table and the enum.)
+  - A row's reason text is computed when Home is built, never stored.
 - **Watch history.** One row per (profile, title, episode), updated in place. This is enforced
   with `UNIQUE NULLS NOT DISTINCT` (a unique rule that treats two NULLs as equal, so movies with
   `episode_id = NULL` still get one row).
@@ -115,8 +116,6 @@ erDiagram
   content ||--o{ rating : "rated in"
   profile ||--o{ profile_genre_preference : picks
   genre ||--o{ profile_genre_preference : ""
-  profile ||--o{ recommendation : receives
-  content ||--o{ recommendation : recommends
 ```
 
 ## Definition
@@ -140,7 +139,6 @@ CREATE TYPE credit_role         AS ENUM ('ACTOR', 'DIRECTOR');
 CREATE TYPE subscription_status AS ENUM ('PENDING', 'ACTIVE', 'CANCELLED', 'EXPIRED');
 CREATE TYPE payment_mode        AS ENUM ('CARD', 'UPI', 'NET_BANKING', 'WALLET');
 CREATE TYPE payment_status      AS ENUM ('SUCCESS', 'FAILED', 'REFUNDED');   -- rows are written by the webhook, so never pending
-CREATE TYPE rec_status          AS ENUM ('SHOWN', 'CLICKED', 'WATCHED', 'DISMISSED');
 ```
 
 ### Account & billing
@@ -375,136 +373,133 @@ CREATE TABLE profile_genre_preference (               -- onboarding: at least 3 
 );
 ```
 
-### Recommendations
+### genre_taste (view)
 
-The stored recommendations, plus the two database objects that feed them:
+Recommendations are computed on every request and never stored. The schema's only
+recommendation-related object is this view: one row per (profile, genre) with a positive
+`taste_score`, worked out from `watch_history`, `rating`, `my_list` and
+`profile_genre_preference` when Home is built (see [Ranking](#ranking)).
 
-- `interaction_score` (a view, a saved query that always shows fresh data) gives one score per
-  (profile, title) from every signal.
-- `content_similarity` (a materialized view) holds title-to-title similarity. It is expensive to
-  compute, so it is stored and refreshed on a schedule.
+| Column | Meaning |
+| --- | --- |
+| `profile_id` | The profile. |
+| `genre_id`, `genre` | The genre and its name. |
+| `watch_score` | Points from watch history (0-1 per title). |
+| `rating_score` | Points from ratings ((value - 3) / 2: 5 stars +1 ... 1 star -1). |
+| `my_list_score` | Points from My List (+0.5 per saved title). |
+| `pick_score` | Points from onboarding picks (+1 for a picked genre). |
+| `taste_score` | The sum of the four. Ranking uses this; the per-source columns explain it. |
+
+It covers every profile; callers filter with `WHERE profile_id = $1`, for example
+`SELECT genre_id, taste_score FROM genre_taste WHERE profile_id = $1 ORDER BY taste_score DESC`.
+The SQL is in `drizzle/0001_genre_taste_view.sql`:
 
 ```sql
-CREATE TABLE recommendation (
-  profile_id      INT         REFERENCES profile ON DELETE CASCADE,
-  content_id      INT         REFERENCES content ON DELETE CASCADE,
-  row_type        VARCHAR(30) NOT NULL,                -- 'top-picks', 'because-you-liked', …
-  relevance_score REAL        NOT NULL,
-  generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  rec_status      rec_status  NOT NULL DEFAULT 'SHOWN',
-  PRIMARY KEY (profile_id, content_id)                 -- one recommendation per title per profile
-);
--- No reason column: the text a row shows ("Because you liked X", "<Genre> is your strongest
--- genre") is built from row_type plus context when Home is served, so it can't go stale.
-CREATE INDEX recommendation_rank_idx ON recommendation (profile_id, relevance_score DESC);
+-- Genre taste: one row per (profile, genre) the profile likes, scored from 4 signals on a 0–1 scale.
+-- Read it per profile:  SELECT * FROM genre_taste WHERE profile_id = $1 ORDER BY taste_score DESC;
+CREATE VIEW genre_taste AS
+WITH
+  watched AS (                              -- one row per (profile, title): a series has a row per episode
+    SELECT profile_id, content_id, MAX(progress_percent) AS progress
+    FROM watch_history
+    GROUP BY profile_id, content_id
+  ),
+  genre_points AS (                         -- points per genre, one block per signal
+    -- 1. watch history: how far the profile got in each title, given to each of its genres
+    SELECT w.profile_id, cg.genre_id, 'watch' AS source,
+           CASE
+             WHEN w.progress < 10 THEN 0
+             WHEN w.progress < 30 THEN 0.25
+             WHEN w.progress < 50 THEN 0.50
+             WHEN w.progress < 80 THEN 0.75
+             ELSE 1.0
+           END AS points
+    FROM watched AS w
+    JOIN content_genre AS cg ON cg.content_id = w.content_id
 
--- Stage 1 of the pipeline: one score per (profile, title) from every signal. Always fresh.
--- Onboarding genres aren't per-title signals; they add to genre affinity in stage 2 (see Ranking).
-CREATE VIEW interaction_score AS
-SELECT profile_id, content_id, SUM(weight) AS score
-FROM (
-  SELECT profile_id, content_id, (value - 3) * 2.0 AS weight FROM rating
-  UNION ALL
-  SELECT profile_id, content_id,
-         CASE WHEN max(progress_percent) >= 90   THEN 3.0   -- completed
-              WHEN max(progress_percent) >= 50   THEN 1.5
-              WHEN max(progress_percent) < 10    THEN -0.5
-              ELSE 0 END
-  FROM watch_history
-  GROUP BY profile_id, content_id                    -- a series has one row per episode
-  UNION ALL
-  SELECT profile_id, content_id, 1.0 FROM my_list
-) AS signals
-GROUP BY profile_id, content_id;
+    UNION ALL
+    -- 2. ratings: 5★ +1, 4★ +0.5, 3★ 0, 2★ -0.5, 1★ -1, given to each of the title's genres
+    SELECT r.profile_id, cg.genre_id, 'rating', (r.value - 3) / 2.0
+    FROM rating AS r
+    JOIN content_genre AS cg ON cg.content_id = r.content_id
 
--- Item-item kNN: cosine similarity between titles over profiles' scores, shrunk when few
--- profiles overlap. Expensive, so materialized and refreshed on a schedule.
-CREATE MATERIALIZED VIEW content_similarity AS
-WITH norms AS (
-  SELECT content_id, sqrt(SUM(score * score)) AS norm
-  FROM interaction_score
-  GROUP BY content_id
-),
-pairs AS (
-  SELECT a.content_id AS content_a, b.content_id AS content_b,
-         SUM(a.score * b.score) AS dot, COUNT(*) AS common
-  FROM interaction_score AS a
-  JOIN interaction_score AS b ON b.profile_id = a.profile_id AND b.content_id <> a.content_id
-  GROUP BY a.content_id, b.content_id
-)
-SELECT p.content_a, p.content_b,
-       (p.dot / (na.norm * nb.norm)) * (p.common::real / (p.common + 2)) AS score
-FROM pairs AS p
-JOIN norms AS na ON na.content_id = p.content_a
-JOIN norms AS nb ON nb.content_id = p.content_b
-WHERE na.norm > 0 AND nb.norm > 0;
-CREATE UNIQUE INDEX content_similarity_pair_key ON content_similarity (content_a, content_b);
--- REFRESH MATERIALIZED VIEW CONCURRENTLY content_similarity;  (needs the unique index above)
+    UNION ALL
+    -- 3. My List: +0.5 for each saved title, given to each of its genres
+    SELECT m.profile_id, cg.genre_id, 'my_list', 0.5
+    FROM my_list AS m
+    JOIN content_genre AS cg ON cg.content_id = m.content_id
+
+    UNION ALL
+    -- 4. onboarding picks: +1 to the picked genre (already a genre, so no join)
+    SELECT profile_id, genre_id, 'pick', 1.0
+    FROM profile_genre_preference
+  )
+SELECT
+  gp.profile_id,
+  g.genre_id,
+  g.name AS genre,
+  ROUND(COALESCE(SUM(gp.points) FILTER (WHERE gp.source = 'watch'),   0), 2) AS watch_score,
+  ROUND(COALESCE(SUM(gp.points) FILTER (WHERE gp.source = 'rating'),  0), 2) AS rating_score,
+  ROUND(COALESCE(SUM(gp.points) FILTER (WHERE gp.source = 'my_list'), 0), 2) AS my_list_score,
+  ROUND(COALESCE(SUM(gp.points) FILTER (WHERE gp.source = 'pick'),    0), 2) AS pick_score,
+  ROUND(SUM(gp.points), 2) AS taste_score   -- the total: what ranking uses
+FROM genre_points AS gp
+JOIN genre AS g ON g.genre_id = gp.genre_id
+GROUP BY gp.profile_id, g.genre_id, g.name
+HAVING SUM(gp.points) > 0;                  -- genres the profile dislikes or never touched drop out
 ```
+
+It is a view, not a table, so it is always fresh: it re-runs on every read, and there is nothing
+to refresh or keep in sync. Reading one profile is fast because Postgres pushes the
+`profile_id` filter down into every branch of the view, so each branch uses its `profile_id`
+index. The Drizzle schema declares it with `pgView("genre_taste", …).existing()`, which tells
+drizzle-kit the view already exists so it does not generate SQL for it.
 
 ## Ranking
 
 `content` keeps no popularity or vote figures from TMDB. Every ranking is computed from our own
-`watch_history` and `rating` rows. The full pipeline (signals, candidates, the home rows and their
-reasons) is specified in `src/server/services/recommendations.service.ts` and
+`watch_history`, `rating`, `my_list` and `profile_genre_preference` rows, with plain queries over the
+base tables, with the taste part wrapped in the `genre_taste` view (nothing precomputed or stored). The algorithm and its SQL are specified in
+[`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md) and
 [`backend/person-c-activity-recommendations.md`](../backend/person-c-activity-recommendations.md).
 This section covers only the parts that touch the schema.
 
 ### Measures
 
-- **Popularity prior**
-  - Definition: the number of distinct profiles who watched the title in the last 30 days,
-    as `ln(1 + n)`, min-max normalised to 0-1.
-  - Used by: the ranking blend, search with no query, and cold start.
-- **Trending**
-  - Definition: the most distinct viewers in the last 7 days.
-  - Used by: the "Trending now" row.
-- **Top rated**
-  - Definition: the Bayesian average (an average pulled towards the global mean when a title has
-    few ratings) of `rating.value`: `(v/(v+m))·R + (m/(v+m))·C`.
-    - `v` is the title's rating count.
-    - `R` is its average rating.
-    - `C` is the average over all ratings.
-    - `m` = 5.
-  - Used by: the "Top rated in <genre>" row.
+- **Genre taste**
+  - Definition: per profile and genre, the sum of points that the profile's signals give to
+    every genre of the title they touched. Read from the `genre_taste` view (`taste_score`).
+  - Points, each on a 0-1 scale: watched (the title's best `progress_percent`, so one row per
+    title: under 10% = 0, under 30% = 0.25, under 50% = 0.5, under 80% = 0.75, otherwise 1),
+    rating ((`value` - 3) / 2, so 5 stars +1 and 1 star -1), My List (+0.5), onboarding pick
+    (+1 straight to the picked genre).
+  - A title's score is the sum of its genres' `taste_score` divided by √(number of genres), so a title can't win just by having many genres.
+  - Used by: the "Top picks" row, the hero and the genre rows.
+- **Search popularity**
+  - Definition: the number of distinct profiles who watched the title in the last 30 days.
+  - Used by: `searchContent` ordering (and "most popular first" with no query). Recommendations do not use it.
+- **Similar titles**
+  - Definition: the number of genres two titles share (a self-join of `content_genre`).
+  - Used by: the title page's "More like this".
 
-Ties always break on `release_date DESC`.
+Ties break on `release_date DESC` (newest first).
 
 ### SQL for the measures
 
 ```sql
--- Popularity prior for every title (0 when nobody watched it in the window).
-WITH viewers AS (
-  SELECT c.content_id, ln(1 + COUNT(DISTINCT w.profile_id)) AS v
-  FROM content AS c
-  LEFT JOIN watch_history AS w
-         ON w.content_id = c.content_id AND w.watched_at > now() - interval '30 days'
-  GROUP BY c.content_id
-)
-SELECT content_id,
-       COALESCE((v - MIN(v) OVER ()) / NULLIF(MAX(v) OVER () - MIN(v) OVER (), 0), 0) AS popularity_prior
-FROM viewers;
+-- Genre taste for one profile ($1): read the view (its SQL is above).
+SELECT genre_id, taste_score
+FROM genre_taste
+WHERE profile_id = $1
+ORDER BY taste_score DESC;
 
--- Top rated: titles with a few ratings are pulled towards the global average.
-WITH stats AS (
-  SELECT content_id, COUNT(*) AS v, AVG(value) AS r FROM rating GROUP BY content_id
-), overall AS (
-  SELECT AVG(value) AS c FROM rating
-)
-SELECT s.content_id, (s.v / (s.v + 5.0)) * s.r + (5.0 / (s.v + 5.0)) * o.c AS bayes
-FROM stats AS s
-CROSS JOIN overall AS o
-JOIN content AS c ON c.content_id = s.content_id
-ORDER BY bayes DESC, c.release_date DESC NULLS LAST;
-```
-
-### The blend
-
-The blend that orders a profile's top picks:
-
-```
-affinity = 0.6 × genre affinity + 0.4 × people affinity
-score    = 0.5 × affinity + 0.3 × item-kNN + 0.2 × popularity prior
+-- Similar titles: those sharing the most genres with title $1.
+SELECT b.content_id, COUNT(*) AS shared_genres
+FROM content_genre AS a
+JOIN content_genre AS b ON b.genre_id = a.genre_id AND b.content_id <> a.content_id
+WHERE a.content_id = $1
+GROUP BY b.content_id
+ORDER BY shared_genres DESC;
 ```
 
 ### Cold start
@@ -513,9 +508,8 @@ Cold start is a brand-new profile with no activity yet.
 
 - Onboarding stores only `profile_genre_preference` (at least 3 genres) and sets
   `profile.onboarded_at`.
-- Each picked genre adds +2 to that genre's affinity.
-- A new profile has no `interaction_score` rows, so people affinity and kNN are 0.
-- So Home is the picked genres' titles, ranked by the popularity prior.
+- Each picked genre adds +1 to that genre's taste, so only the picked genres have weight.
+- Onboarding requires at least 3 picks before a profile reaches Home, so a new profile always has a genre taste and no popularity fallback is needed. A profile with nothing at all (only possible in seed data) gets every score 0, ordered newest first.
 - Ratings, watching and My List take over as they accumulate.
 
 ## Payment flow
@@ -598,24 +592,16 @@ No non-key attribute depends on another non-key attribute. Points worth noting:
     never stored.
   - So there is no transitive dependency (`content_id → age_rating → maturity`) and no lookup
     table is needed.
-- **`recommendation` key**
-  - It is keyed by `(profile_id, content_id)`: a recommendation is one title _for_ one profile, so
-    the natural composite key is the primary key and no surrogate id is needed.
-  - `row_type`, `relevance_score`, `generated_at` and `rec_status` all depend on the whole key
-    (2NF).
-  - Reaching the profile through a watch-history row would make it depend on a non-key attribute,
-    and would leave profiles with no history (new ones) without recommendations.
-- **Reason text and anchor not stored**
-  - The human-readable reason and the "Because you liked X" anchor are _not_ stored.
-  - The reason is a function of `row_type` plus context (a genre or person name, the anchor title).
-    The anchor is recomputed from `content_similarity` when Home is built.
-  - Storing either would duplicate derivable data and go stale when titles are renamed or
-    similarities refresh.
+- **Recommendations not stored**
+  - Top picks, scores and reason text are all functions of `watch_history`, `rating`, `my_list` and
+    `profile_genre_preference`, so they are computed when Home is served.
+  - Storing them would duplicate derivable data and go stale when titles are renamed or the
+    viewer's activity changes. This is why the `recommendation` table was dropped.
 - **"Completed" not stored**
   - It is derived from `progress_percent` (`>= 90`), so it is not stored at all, not even as a
     generated column.
   - Every query that needs it writes the predicate, so it can't drift.
-- **Popularity, trending, average ratings not stored**
+- **Popularity and average ratings not stored**
   - They are aggregates of `watch_history` and `rating`, so they are computed in queries (see
     [Ranking](#ranking)) instead of being stored on `content`, where they would duplicate the
     activity rows and go stale.
@@ -673,22 +659,24 @@ plain PostgreSQL. Almost everything above maps directly (SQL -> Drizzle):
 - `UNIQUE NULLS NOT DISTINCT` (`watch_history`, the `content` and `person` natural keys) ->
   `unique().on(…).nullsNotDistinct()`, e.g.
   `unique().on(t.title, t.contentType, t.releaseDate).nullsNotDistinct()`
-- composite primary keys (`my_list`, `rating`, `recommendation`, …) ->
+- composite primary keys (`my_list`, `rating`, …) ->
   `primaryKey({ columns: [t.profileId, t.contentId] })`
-- `interaction_score` view, `content_similarity` materialized view -> `pgView()`,
-  `pgMaterializedView()`
-- `maturity_of()` function -> a custom migration; queries call it with
-  ``sql`maturity_of(${content.ageRating})` ``
+- `genre_taste` view -> `pgView("genre_taste", {…}).existing()` in
+  `src/server/db/schema/recommendations.ts` (the view itself is created by hand-written SQL in
+  `drizzle/0001_genre_taste_view.sql`)
+- `maturity_of()` function and `CREATE EXTENSION unaccent` -> hand-written SQL in the migration;
+  queries call the function with ``sql`maturity_of(${content.ageRating})` ``
 
-Check every generated migration before applying it. Anything `drizzle-kit` doesn't emit the way we
-want goes into a custom migration (`drizzle-kit generate --custom`).
+The schema ships as three migrations: `drizzle/0000_schema.sql` (tables, constraints, indexes,
+`maturity_of()` and the `unaccent` extension), `drizzle/0001_genre_taste_view.sql` (the
+`genre_taste` view) and `drizzle/0002_drop_recommendation.sql` (drops the `recommendation` table
+and the `rec_status` enum). Check them before applying. Anything `drizzle-kit` doesn't emit the way we
+want is written into those files by hand.
 
 The client (`src/server/db/index.ts`) is drizzle-orm over a node-postgres (`pg`) `Pool` on
 `DATABASE_URL` (a Neon connection string), so `db.transaction` works.
 
 ## Still open
 
-- When `recommendation` is regenerated (after each activity, on Home load when older than N
-  minutes, or nightly) and how often `content_similarity` is refreshed.
-- Weighted ranking (current plan) vs a small trained model: check with the teacher.
+- Genre-taste ranking (current plan) vs a small trained model: check with the teacher.
 - Whether to keep the shorter column names above or switch to the domain's exact names.

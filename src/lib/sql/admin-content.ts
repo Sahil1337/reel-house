@@ -175,5 +175,4 @@ export const CASCADE_RULES: CascadeRule[] = [
   { table: "watch_history", column: "content_id", holds: "every profile's viewing progress, episodes included" },
   { table: "my_list", column: "content_id", holds: "profiles' My List entries" },
   { table: "rating", column: "content_id", holds: "profiles' 1-5 ratings" },
-  { table: "recommendation", column: "content_id", holds: "stored recommendations for the title" },
 ];

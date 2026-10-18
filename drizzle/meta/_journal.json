@@ -5,22 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1792276701527,
+      "when": 1792348686127,
       "tag": "0000_schema",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1792276707967,
-      "tag": "0001_functions_and_views",
+      "when": 1792352856495,
+      "tag": "0001_genre_taste_view",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1792277729988,
-      "tag": "0002_fix_subscription_check",
+      "when": 1792355615568,
+      "tag": "0002_drop_recommendation",
       "breakpoints": true
     }
   ]

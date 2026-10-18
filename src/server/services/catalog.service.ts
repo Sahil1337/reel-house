@@ -2,8 +2,8 @@
  * Catalogue reads: search and browse, one title's full detail, the genre list and "More like this".
  *
  * Tables it reads: content, genre, content_genre, person, content_credit, season, episode — plus
- * watch_history (30-day popularity for ranking) and the content_similarity materialized view (item-kNN
- * for similar titles). Writes nothing; the catalogue is written only by admin.service.importTitle.
+ * watch_history (popularity for search ranking). Writes nothing; the catalogue is written only by
+ * admin.service.importTitle.
  *
  * Maturity is never stored: every catalogue query that filters by profile uses the SQL function
  * maturity_of(c.age_rating) (docs/schema/SCHEMA.md), whose enum order is KIDS < TEEN < ADULT and which maps a
@@ -15,10 +15,6 @@
  *   getContentDetail(contentId)                            GET /api/content/:contentId
  *   listGenres()                                           GET /api/genres
  *   getSimilarTitles(contentId, maturityLevel, limit = 12) GET /api/content/:contentId/similar
- *
- * Shared with recommendations.service (owned elsewhere): the `interaction_score` view and the
- * `content_similarity` materialized view (stage 1 and the item-kNN of the pipeline). getSimilarTitles
- * reads content_similarity directly in SQL; it imports nothing from that service.
  */
 import "server-only";
 
@@ -180,67 +176,31 @@ export async function listGenres(): Promise<Genre[]> {
 }
 
 /**
- * "More like this": up to `limit` titles ranked by a blend of what viewers did with them (item-kNN) and
- * how much their genres and people overlap (content-based). Never the title itself.
+ * "More like this": up to `limit` titles that share the most genres with this one. Never the title itself.
  *
  * Steps:
  *   1. getContentDetail(contentId) → NotFoundError for an unknown id (so the route answers 404).
- *   2. itemSimilarity: cosine similarity between this title and every other over per-profile
- *      interaction scores, shrunk by common / (common + 2) so pairs seen by few profiles count less.
- *      Precomputed in the content_similarity materialized view (docs/schema/SCHEMA.md; refreshed on a schedule,
- *      shared with recommendations.service), so here it is a lookup: score WHERE content_a = $1.
- *      Titles with no row get 0.
- *   3. contentSimilarity: 0.7 × Jaccard(shared genres) + 0.3 × min(1, shared people ÷ 2), where people
- *      are content_credit rows with role = 'ACTOR' AND credit_order < 5 (top-5 billed) or role = 'DIRECTOR'.
- *   4. score = 0.65 × itemSimilarity + 0.35 × contentSimilarity; keep score > 0.05 and titles the
- *      profile may see (maturity_of(age_rating) <= $maturityLevel; null = no filter); never the title itself.
- *   5. ORDER BY score DESC (ties: release_date DESC) LIMIT $limit (12 on the title page); attach genres
- *      as in searchContent.
+ *   2. Self-join content_genre: for every other title, count the genres it shares with this one.
+ *   3. Keep titles the profile may see (maturity_of(age_rating) <= $maturityLevel; null = no filter).
+ *   4. ORDER BY shared genres DESC, then release_date DESC (newest first); LIMIT $limit (12 on the title
+ *      page); attach genres as in searchContent.
  * SQL:
- *   WITH item AS (                                     -- itemSimilarity
- *          SELECT content_b AS content_id, score AS item_sim
- *          FROM content_similarity WHERE content_a = $1
- *        ),
- *        my_genres AS (SELECT genre_id FROM content_genre WHERE content_id = $1),
- *        my_people AS (
- *          SELECT person_id FROM content_credit
- *          WHERE content_id = $1 AND (role = 'DIRECTOR' OR (role = 'ACTOR' AND credit_order < 5))
- *        ),
- *        genre_overlap AS (                             -- Jaccard = shared / (|A| + |B| - shared)
- *          SELECT cg.content_id,
- *                 COUNT(*) FILTER (WHERE cg.genre_id IN (SELECT genre_id FROM my_genres))::real AS shared,
- *                 COUNT(*) AS theirs
- *          FROM content_genre AS cg GROUP BY cg.content_id
- *        ),
- *        people_overlap AS (
- *          SELECT cc.content_id, COUNT(DISTINCT cc.person_id) AS shared
- *          FROM content_credit AS cc
- *          WHERE cc.person_id IN (SELECT person_id FROM my_people)
- *            AND (cc.role = 'DIRECTOR' OR (cc.role = 'ACTOR' AND cc.credit_order < 5))
- *          GROUP BY cc.content_id
- *        )
- *   SELECT c.content_id, c.title, c.description, c.release_date, c.content_type, c.duration_minutes,
- *          c.age_rating, maturity_of(c.age_rating) AS maturity_level, c.poster_url, c.backdrop_url,
- *          <genres json_agg subquery as in searchContent> AS genres,
- *          0.65 * COALESCE(i.item_sim, 0)
- *        + 0.35 * ( 0.7 * COALESCE(go.shared / NULLIF((SELECT COUNT(*) FROM my_genres) + go.theirs - go.shared, 0), 0)
- *                 + 0.3 * LEAST(1, COALESCE(po.shared, 0) / 2.0) ) AS score
- *   FROM content AS c
- *   LEFT JOIN item          AS i  ON i.content_id  = c.content_id
- *   LEFT JOIN genre_overlap AS go ON go.content_id = c.content_id
- *   LEFT JOIN people_overlap AS po ON po.content_id = c.content_id
- *   WHERE c.content_id <> $1
- *     AND ($2::maturity_level IS NULL OR maturity_of(c.age_rating) <= $2)
- *   -- keep only score > 0.05: repeat the expression in a subquery/CTE and filter outside, then:
- *   ORDER BY score DESC, c.release_date DESC NULLS LAST
- *   LIMIT $3;
- * Tables: content_similarity (mat. view over interaction_score), content, content_genre, genre,
- *   content_credit  ·  Keys/constraints relied on: content_similarity_pair_key UNIQUE (content_a,
- *   content_b); content_genre PK; content_credit PK (content_id, person_id, role); maturity_of().
- * Transaction: no  ·  Idempotent: yes (read-only; content_similarity is only as fresh as its last refresh)
- * Edge cases: a title nobody has interacted with has no content_similarity rows, so it ranks on
- *   genres/people alone; fewer than `limit` titles can clear the 0.05 bar; the cosine can be negative
- *   for titles the same viewers rated low, which pushes them out.
+ *   SELECT c.content_id, COUNT(*) AS shared_genres
+ *     FROM content_genre AS a
+ *     JOIN content_genre AS b ON b.genre_id = a.genre_id AND b.content_id <> a.content_id
+ *     JOIN content AS c ON c.content_id = b.content_id
+ *    WHERE a.content_id = $1
+ *      AND ($2::maturity_level IS NULL OR maturity_of(c.age_rating) <= $2)
+ *    GROUP BY c.content_id, c.release_date
+ *    ORDER BY shared_genres DESC, c.release_date DESC NULLS LAST
+ *    LIMIT $3;
+ *   -- then load the ContentSummary columns + genres for those ids, keeping this order.
+ * Tables: content_genre, content, genre  ·  Keys/constraints relied on: content_genre PK
+ *   (content_id, genre_id) and content_genre_genre_idx (genre_id) for the self-join; maturity_of().
+ * Transaction: no  ·  Idempotent: yes (read-only)
+ * Edge cases: a title with no genres has no similar titles ([]); with few titles in its genres the list
+ *   can be shorter than `limit`. The same query (plus an "unseen by this profile" filter) feeds the
+ *   "Because you liked X" row in recommendations.service.
  * Throws: NotFoundError "Title not found." when the id doesn't exist.
  * Called by: GET /api/content/:contentId/similar
  * Mock today: the first `limit` other titles in catalogue order (default 12) that the maturity level allows.

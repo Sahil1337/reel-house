@@ -10,7 +10,7 @@
  *   - subscription_plan: PK plan_id, UNIQUE (name), CHECK (price_monthly >= 0), CHECK (max_devices > 0).
  *   - subscription: FK plan_id -> subscription_plan ON DELETE RESTRICT, FK user_id -> users ON DELETE RESTRICT,
  *     partial UNIQUE index subscription_one_active_per_user ON subscription (user_id) WHERE status = 'ACTIVE',
- *     and the dates CHECK (drizzle/0002_fix_subscription_check.sql):
+ *     and the dates CHECK (drizzle/0000_schema.sql):
  *       CHECK ((status IN ('PENDING', 'CANCELLED') AND start_date IS NULL AND end_date IS NULL)
  *              OR (start_date IS NOT NULL AND end_date > start_date))
  *     i.e. a never-paid row has no dates, a paid row (ACTIVE / EXPIRED / CANCELLED after a payment) has both
