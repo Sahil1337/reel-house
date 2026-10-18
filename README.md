@@ -146,8 +146,8 @@ sql, explanation } } }`; the SQL strings live in `src/server/services/admin.serv
 - **Import from TMDB**: search TMDB as you type (movies or series), pick a result and preview exactly
   what an import stores: the content row, genres, cast and directors with photos, seasons and episodes,
   and the row count per table. Below the preview is the SQL the import runs, statement by statement
-  (BEGIN, the upserts in dependency order, COMMIT), each with a short explanation, parameterized or
-  inlined, with copy buttons for each statement and for the whole transaction. "Import" calls
+  (BEGIN, the upserts in dependency order, COMMIT), each with a short explanation and the values filled in,
+  with copy buttons for each statement and for the whole transaction. "Import" calls
   `POST /api/admin/content/import`, whose service persists nothing yet.
 - **Content** (`/admin/content`): every title with poster, type, year, age rating, genres and the
   season / episode counts for series; search, type and genre filters and server-side pagination

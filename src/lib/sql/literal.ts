@@ -32,14 +32,7 @@ export function statement(fields: Omit<SqlStatement, "inlinedSql">): SqlStatemen
   return { ...fields, inlinedSql: inlineParams(fields.sql, fields.params) };
 }
 
-/** The whole script as one copyable text: inlined (runnable in psql) or parameterized with each statement's params. */
-export function scriptText(statements: SqlStatement[], mode: "inlined" | "parameterized"): string {
-  return statements
-    .map((entry) => {
-      const header = `-- ${entry.step}. ${entry.title}`;
-      if (mode === "inlined") return `${header}\n${entry.inlinedSql}`;
-      const params = entry.params.length ? `\n-- params: ${JSON.stringify(entry.params)}` : "";
-      return `${header}\n${entry.sql}${params}`;
-    })
-    .join("\n\n");
+/** The whole script as one copyable text, values inlined so it runs as is in psql. */
+export function scriptText(statements: SqlStatement[]): string {
+  return statements.map((entry) => `-- ${entry.step}. ${entry.title}\n${entry.inlinedSql}`).join("\n\n");
 }
