@@ -164,10 +164,10 @@ ON CONFLICT (name) DO NOTHING;`,
       sql: `INSERT INTO content_genre (content_id, genre_id)
 SELECT c.content_id, g.genre_id
 FROM content AS c
-JOIN genre AS g ON g.name = ANY ($4::text[])
+JOIN genre AS g ON g.name IN (${genreNames.map((_, index) => `$${index + 4}`).join(", ")})
 WHERE ${CONTENT_KEY}
 ON CONFLICT DO NOTHING;`,
-      params: [...key, genreNames],
+      params: [...key, ...genreNames],
       table: "content_genre",
       rowCount: genreNames.length,
     });

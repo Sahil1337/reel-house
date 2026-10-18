@@ -104,7 +104,7 @@ export function buildDeletePlanSql(planId: number, inUseCount: number): SqlState
         title: "Count what blocks it",
         explanation:
           "Runs only after the 23503, to put the number in the error message. The foreign key decides, not this count, so a subscription created a moment ago cannot slip past.",
-        sql: "SELECT COUNT(*)::int AS subscriptions\nFROM subscription\nWHERE plan_id = $1;",
+        sql: "SELECT COUNT(*) AS subscriptions\nFROM subscription\nWHERE plan_id = $1;",
         params: [planId],
         table: "subscription",
         rowCount: 0,

@@ -539,10 +539,10 @@ An operation is idempotent when running it twice has the same effect as running 
 Money is the easiest place to introduce silent rounding bugs, so we convert in exactly one place.
 
 - DB: `NUMERIC(10,2)` in **rupees** (`subscription_plan.price_monthly`, `payment.amount`).
-- Drizzle returns `numeric` columns as **strings** (and raw `pg` does for `numeric`/`bigint`/`COUNT`).
+- Drizzle returns `numeric` columns as **strings** (raw `pg` queries get numbers, via the parsers in src/server/db/index.ts).
   - Rule: convert with `Number(...)` at the service boundary, never later.
   - The API and `src/types` carry rupees as `number` (e.g. `399`).
-  - Cast in SQL where convenient: `COUNT(*)::int`, `SUM(amount)::numeric`, then `Number()`.
+  - Raw SQL needs no casts: src/server/db/index.ts parses `bigint` (COUNT) and `numeric` (SUM, amounts) to numbers.
 - Razorpay speaks **paise integers** (1 rupee = 100 paise). Convert once:
   - `paise = Math.round(Number(priceMonthly) * 100)`.
   - Store `payment.amount` as `(paise / 100).toFixed(2)` (a string for the numeric column), or in SQL as `$paise::numeric / 100`.

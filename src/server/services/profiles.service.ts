@@ -190,9 +190,9 @@ export async function getGenrePreferences(profileId: number): Promise<number[]> 
  *      exist in genre → ValidationError.
  *   2. One transaction: delete the old picks, insert the new ones, stamp onboarded_at.
  * SQL:
- *   SELECT COUNT(*) FROM genre WHERE genre_id = ANY($2::int[]);         -- must equal the distinct count
+ *   SELECT COUNT(*) FROM genre WHERE genre_id IN ($2, $3, ...);  -- one $n per id; must equal the distinct count
  *   DELETE FROM profile_genre_preference WHERE profile_id = $1;
- *   INSERT INTO profile_genre_preference (profile_id, genre_id) SELECT $1, unnest($2::int[]);
+ *   INSERT INTO profile_genre_preference (profile_id, genre_id) VALUES ($1, $2), ($1, $3), ...;  -- one row per id
  *   UPDATE profile SET onboarded_at = now() WHERE profile_id = $1
  *   RETURNING profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NOT NULL) AS onboarding_completed;
  * Tables: profile_genre_preference, profile, genre  ·  Keys/constraints relied on: PK

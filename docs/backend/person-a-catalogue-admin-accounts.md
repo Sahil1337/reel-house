@@ -494,9 +494,9 @@ Cold-start effect: in the home feed each picked genre adds +2 to that genre's af
 **SQL:**
 
 ```sql
-SELECT COUNT(*) FROM genre WHERE genre_id = ANY($2::int[]);         -- must equal the distinct count
+SELECT COUNT(*) FROM genre WHERE genre_id IN ($2, $3, ...);  -- one $n per id; must equal the distinct count
 DELETE FROM profile_genre_preference WHERE profile_id = $1;
-INSERT INTO profile_genre_preference (profile_id, genre_id) SELECT $1, unnest($2::int[]);
+INSERT INTO profile_genre_preference (profile_id, genre_id) VALUES ($1, $2), ($1, $3), ...;  -- one row per id
 UPDATE profile SET onboarded_at = now() WHERE profile_id = $1
 RETURNING profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NOT NULL) AS onboarding_completed;
 ```
@@ -507,7 +507,7 @@ RETURNING profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NO
 - Transaction: yes (`db.transaction`). Idempotent: yes (re-saving the same picks gives the same rows; `onboarded_at` is re-stamped).
 - Duplicates in the input count once.
 - Unknown genre ids are a 422, not silently dropped.
-- Array parameters: see section 11 (`sql.param(ids)::int[]` or `inArray`).
+- Lists of ids: see section 11 (`IN ${ids}` in the `sql` template, or `inArray`).
 
 **Errors:**
 
@@ -634,7 +634,7 @@ Return types come from `@/types`:
 Row mapping:
 
 - `maturity_of(c.age_rating) AS maturity_level` gives `maturityLevel`.
-- `release_date` must come back as the string `YYYY-MM-DD` (select `c.release_date::text` in raw SQL).
+- `release_date` must come back as the string `YYYY-MM-DD` (the pg DATE parser in src/server/db/index.ts keeps it as text).
 - `genres` come from the `json_agg(json_build_object('genreId', ..., 'name', ...))` subquery, already in camelCase.
 
 ### 7.2 `listGenres(): Promise<Genre[]>`
@@ -702,7 +702,7 @@ FROM season WHERE content_id = $1 AND season_number > 0 ORDER BY season_number;
 
 -- their episodes, grouped by season_id in code
 SELECT episode_id, season_id, episode_number, title, description, release_date, duration_minutes, still_url
-FROM episode WHERE season_id = ANY($2::int[]) ORDER BY season_id, episode_number;
+FROM episode WHERE season_id IN ($2, $3, ...) ORDER BY season_id, episode_number;  -- one $n per season_id
 ```
 
 **Rules to respect:**
@@ -728,7 +728,7 @@ Assembly sketch (Drizzle `sql` + `db.execute`, or the builder with `inArray(epis
 const [row] = (await db.execute(sql`SELECT ... FROM content WHERE content_id = ${contentId}`)).rows;
 if (!row) throw new NotFoundError("Title not found.");
 const [genres, cast, directors, seasons] = await Promise.all([...]);
-const episodes = seasons.length ? await ... : [];            // ANY(${sql.param(seasonIds)}::int[]) or inArray()
+const episodes = seasons.length ? await ... : [];            // season_id IN ${seasonIds}, or inArray()
 return { ...mapContent(row), genres, cast: cast.map((r) => ({ person: mapPerson(r), characterName: r.character_name })),
          directors: directors.map(mapPerson), seasons: seasons.map((s) => ({ ...mapSeason(s), episodes: bySeason.get(s.season_id) ?? [] })) };
 ```
@@ -758,7 +758,7 @@ SELECT c.content_id, c.title, c.description, c.release_date, c.content_type, c.d
        c.age_rating, maturity_of(c.age_rating) AS maturity_level, c.poster_url, c.backdrop_url,
        COALESCE((SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
                  FROM content_genre AS cg JOIN genre AS g ON g.genre_id = cg.genre_id
-                 WHERE cg.content_id = c.content_id), '[]'::json) AS genres
+                 WHERE cg.content_id = c.content_id), '[]') AS genres
 FROM content AS c
 LEFT JOIN popularity AS pop ON pop.content_id = c.content_id
 WHERE ($1::maturity_level IS NULL OR maturity_of(c.age_rating) <= $1)
@@ -1018,7 +1018,7 @@ WHERE title = $1 AND content_type = $2 AND release_date IS NOT DISTINCT FROM $3;
    - Bind `null` for absent filters, never `undefined`.
 2. Run the page query and a `COUNT(*)` with the same `WHERE` (parallel is fine; read-only, no transaction needed).
 3. `pageCount = max(1, ceil(total / pageSize))`. A page past the end answers with the **last** page (re-run with the clamped offset) and reports the page it returned.
-4. Map to `AdminContentRow`. `release_date` as `'YYYY-MM-DD'` text (`::text`); `genres` arrives as parsed JSON.
+4. Map to `AdminContentRow`. `release_date` already arrives as `'YYYY-MM-DD'` text; `genres` arrives as parsed JSON.
 
 **SQL:**
 
@@ -1027,11 +1027,11 @@ SELECT
   c.content_id, c.title, c.content_type, c.release_date, c.age_rating, c.poster_url,
   COALESCE((SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
             FROM content_genre AS cg JOIN genre AS g ON g.genre_id = cg.genre_id
-            WHERE cg.content_id = c.content_id), '[]'::json) AS genres,
+            WHERE cg.content_id = c.content_id), '[]') AS genres,
   CASE WHEN c.content_type = 'SERIES'
-       THEN (SELECT COUNT(*)::int FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
+       THEN (SELECT COUNT(*) FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
   CASE WHEN c.content_type = 'SERIES'
-       THEN (SELECT COUNT(*)::int FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
+       THEN (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
              WHERE s.content_id = c.content_id) END AS episode_count
 FROM content AS c
 WHERE c.title ILIKE $1 ESCAPE '\'                                         -- only when q is set
@@ -1041,7 +1041,7 @@ WHERE c.title ILIKE $1 ESCAPE '\'                                         -- onl
 ORDER BY c.title, c.content_id
 LIMIT $4 OFFSET $5;
 
-SELECT COUNT(*)::int AS total FROM content AS c WHERE <same filters>;
+SELECT COUNT(*) AS total FROM content AS c WHERE <same filters>;
 ```
 
 The subqueries run only for the rows that survive `LIMIT`. A `LEFT JOIN` + `GROUP BY` would multiply rows (genres x seasons x episodes) before `COUNT DISTINCT` could fix it.
@@ -1077,15 +1077,15 @@ The subqueries run only for the rows that survive `LIMIT`. A `LEFT JOIN` + `GROU
 ```sql
 SELECT
   c.content_id, c.title, c.content_type,
-  (SELECT COUNT(*)::int FROM content_genre  WHERE content_id = c.content_id) AS content_genre,
-  (SELECT COUNT(*)::int FROM content_credit WHERE content_id = c.content_id) AS content_credit,
-  (SELECT COUNT(*)::int FROM season         WHERE content_id = c.content_id) AS season,
-  (SELECT COUNT(*)::int FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
-    WHERE s.content_id = c.content_id)                                        AS episode,
-  (SELECT COUNT(*)::int FROM watch_history  WHERE content_id = c.content_id) AS watch_history,
-  (SELECT COUNT(*)::int FROM my_list        WHERE content_id = c.content_id) AS my_list,
-  (SELECT COUNT(*)::int FROM rating         WHERE content_id = c.content_id) AS rating,
-  (SELECT COUNT(*)::int FROM recommendation WHERE content_id = c.content_id) AS recommendation
+  (SELECT COUNT(*) FROM content_genre  WHERE content_id = c.content_id) AS content_genre,
+  (SELECT COUNT(*) FROM content_credit WHERE content_id = c.content_id) AS content_credit,
+  (SELECT COUNT(*) FROM season         WHERE content_id = c.content_id) AS season,
+  (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
+    WHERE s.content_id = c.content_id)                                    AS episode,
+  (SELECT COUNT(*) FROM watch_history  WHERE content_id = c.content_id) AS watch_history,
+  (SELECT COUNT(*) FROM my_list        WHERE content_id = c.content_id) AS my_list,
+  (SELECT COUNT(*) FROM rating         WHERE content_id = c.content_id) AS rating,
+  (SELECT COUNT(*) FROM recommendation WHERE content_id = c.content_id) AS recommendation
 FROM content AS c
 WHERE c.content_id = $1;
 ```
@@ -1240,7 +1240,7 @@ Most writes are **upserts**: `INSERT ... ON CONFLICT ... DO UPDATE` (insert the 
    - `INSERT INTO genre (name) VALUES ($1), ($2), ... ON CONFLICT (name) DO NOTHING;`
    - Idempotency: `genre.name UNIQUE` (TV-only genres were folded into movie genres by the mapper).
 4. **Link genres to the title.**
-   - `INSERT INTO content_genre (content_id, genre_id) SELECT c.content_id, g.genre_id FROM content c JOIN genre g ON g.name = ANY ($4::text[]) WHERE <content key> ON CONFLICT DO NOTHING;`
+   - `INSERT INTO content_genre (content_id, genre_id) SELECT c.content_id, g.genre_id FROM content c JOIN genre g ON g.name IN ($4, $5, ...) WHERE <content key> ON CONFLICT DO NOTHING;`
    - Idempotency: PK `(content_id, genre_id)`.
 5. **Upsert `person`** (cast + directors/creators de-duplicated by `(name, date_of_birth)`).
    - `INSERT INTO person (name, date_of_birth, photo_url) VALUES ... ON CONFLICT (name, date_of_birth) DO UPDATE SET photo_url = EXCLUDED.photo_url;`
@@ -1301,7 +1301,6 @@ export async function importTitle(input: ImportTitleInput, title?: TmdbTitleData
 
 Notes:
 
-- `statement.params` may contain JS arrays (`$4::text[]`); `pg` serialises them.
 - If `db.$client` is not reachable through the lazy proxy in `db/index.ts`, export the `Pool` next to `db` in a PR.
 - Alternatively, run `statements.filter((s) => s.table !== null)` inside `db.transaction` with `tx.execute(...)`, but then the `$n` placeholders need converting. The dedicated client is simpler.
 - The `input` argument says which title it was; nothing stores the TMDB id.
@@ -1346,31 +1345,31 @@ Simple ones first (SQL verbatim from `QUERIES`):
 - **`totalUsers`** maps to `{ count }`.
 
   ```sql
-  SELECT COUNT(*)::int AS count FROM users WHERE role = 'USER';
+  SELECT COUNT(*) AS count FROM users WHERE role = 'USER';
   ```
 
 - **`activeSubscriptions`** maps to `{ count }`.
 
   ```sql
-  SELECT COUNT(*)::int AS count FROM subscription WHERE status = 'ACTIVE' AND end_date > now();
+  SELECT COUNT(*) AS count FROM subscription WHERE status = 'ACTIVE' AND end_date > now();
   ```
 
 - **`titles`** maps to `{ movies, series }`.
 
   ```sql
-  SELECT COUNT(*) FILTER (WHERE content_type = 'MOVIE')::int AS movies, COUNT(*) FILTER (WHERE content_type = 'SERIES')::int AS series FROM content;
+  SELECT COUNT(*) FILTER (WHERE content_type = 'MOVIE') AS movies, COUNT(*) FILTER (WHERE content_type = 'SERIES') AS series FROM content;
   ```
 
 - **`episodes`** maps to `{ count }`.
 
   ```sql
-  SELECT COUNT(*)::int AS count FROM episode;
+  SELECT COUNT(*) AS count FROM episode;
   ```
 
 - **`revenueThisMonth`** maps to `{ amount: Number(amount), payments, month }`.
 
   ```sql
-  SELECT COALESCE(SUM(amount), 0)::numeric AS amount, COUNT(*)::int AS payments, to_char(now(), 'YYYY-MM') AS month FROM payment WHERE status = 'SUCCESS' AND payment_date >= date_trunc('month', now()) AND payment_date < date_trunc('month', now()) + interval '1 month';
+  SELECT COALESCE(SUM(amount), 0) AS amount, COUNT(*) AS payments, to_char(now(), 'YYYY-MM') AS month FROM payment WHERE status = 'SUCCESS' AND payment_date >= date_trunc('month', now()) AND payment_date < date_trunc('month', now()) + interval '1 month';
   ```
 
 The other four, with comments:
@@ -1393,8 +1392,8 @@ LIMIT 10;
 
 -- mostWatched: ranks titles by how many different profiles watched them; plays counts history rows (one per episode for series)
 SELECT c.content_id, c.title, c.content_type, c.poster_url,
-       COUNT(DISTINCT wh.profile_id)::int AS viewers,
-       COUNT(*)::int                      AS plays
+       COUNT(DISTINCT wh.profile_id) AS viewers,
+       COUNT(*)                      AS plays
 FROM watch_history AS wh
 JOIN content AS c ON c.content_id = wh.content_id
 GROUP BY c.content_id
@@ -1402,7 +1401,7 @@ ORDER BY viewers DESC, plays DESC, c.title
 LIMIT 10;
 
 -- genreDistribution: titles per genre through the content_genre bridge; LEFT JOIN keeps genres with no titles at 0
-SELECT g.genre_id, g.name, COUNT(cg.content_id)::int AS titles
+SELECT g.genre_id, g.name, COUNT(cg.content_id) AS titles
 FROM genre AS g
 LEFT JOIN content_genre AS cg ON cg.genre_id = g.genre_id
 GROUP BY g.genre_id
@@ -1410,8 +1409,8 @@ ORDER BY titles DESC, g.name;
 
 -- subscriptionsByPlan: every plan with its active and all-time subscription counts; LEFT JOIN keeps plans nobody has chosen
 SELECT sp.plan_id, sp.name AS plan_name, sp.price_monthly,
-       COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE')::int AS active,
-       COUNT(s.subscription_id)::int                                   AS total
+       COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE') AS active,
+       COUNT(s.subscription_id)                                    AS total
 FROM subscription_plan AS sp
 LEFT JOIN subscription AS s ON s.plan_id = sp.plan_id
 GROUP BY sp.plan_id
@@ -1450,8 +1449,8 @@ CREATE INDEX watch_history_content_idx    ON watch_history (content_id);
 A short list of gotchas you will hit while turning the SQL above into code.
 
 - **Raw vs builder.** The SQL above is long; use ``db.execute(sql`...`)`` and read `result.rows`. The builder is fine for `listGenres` and the small lookups.
-- **Arrays.** In the `sql` template a plain JS array expands to a `($1, $2, ...)` list, which breaks `= ANY($n::int[])`. Wrap it: `${sql.param(ids)}::int[]` (verify with a scratch query), use `inArray()`, or call `db.$client.query(text, values)` with the `$n` text verbatim.
-- **Types from the driver.** `COUNT`/`SUM` -> cast in SQL (`::int`); `numeric` arrives as a string -> `Number()`; `date` -> select `::text`; timestamps -> `new Date(v).toISOString()`.
+- **Lists (`IN`).** In the `sql` template a JS array expands to `($1, $2, ...)`, so ``sql`... WHERE genre_id IN ${ids}` `` just works (or use `inArray()`). Skip the query when the array is empty: `IN ()` is a syntax error.
+- **Types from the driver.** src/server/db/index.ts parses `bigint` (COUNT) and `numeric` (raw SQL) to numbers and keeps `date` as `'YYYY-MM-DD'`, so no casts are needed; Drizzle-typed `numeric` columns still come back as strings -> `Number()`; timestamps -> `new Date(v).toISOString()`.
 - **Escape LIKE input** and bind `null` (not `undefined`) for absent filters.
 - **Don't leak `score`** (an internal column of `getSimilarTitles`) into `ContentSummary`.
 - **No `server/mocks` import** may remain in `catalog.service.ts` / `admin.service.ts` when you are done (`toSummary`, `findContent`, `getMockDb`, `findByKey`).

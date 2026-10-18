@@ -38,13 +38,13 @@ import type {
 const QUERIES = {
   totalUsers: {
     explanation: "Counts customer accounts; admins are excluded by role.",
-    sql: `SELECT COUNT(*)::int AS count
+    sql: `SELECT COUNT(*) AS count
 FROM users
 WHERE role = 'USER';`,
   },
   activeSubscriptions: {
     explanation: "Subscriptions marked ACTIVE whose paid period hasn't ended yet.",
-    sql: `SELECT COUNT(*)::int AS count
+    sql: `SELECT COUNT(*) AS count
 FROM subscription
 WHERE status = 'ACTIVE'
   AND end_date > now();`,
@@ -52,22 +52,22 @@ WHERE status = 'ACTIVE'
   titles: {
     explanation: "One pass over content, split by type with FILTER instead of two separate counts.",
     sql: `SELECT
-  COUNT(*) FILTER (WHERE content_type = 'MOVIE')::int  AS movies,
-  COUNT(*) FILTER (WHERE content_type = 'SERIES')::int AS series
+  COUNT(*) FILTER (WHERE content_type = 'MOVIE')  AS movies,
+  COUNT(*) FILTER (WHERE content_type = 'SERIES') AS series
 FROM content;`,
   },
   episodes: {
     explanation: "Every episode row across all seasons of all series.",
-    sql: `SELECT COUNT(*)::int AS count
+    sql: `SELECT COUNT(*) AS count
 FROM episode;`,
   },
   revenueThisMonth: {
     explanation:
       "Sums successful payments from the first of this month; failed, pending and refunded ones don't count.",
     sql: `SELECT
-  COALESCE(SUM(amount), 0)::numeric AS amount,
-  COUNT(*)::int                     AS payments,
-  to_char(now(), 'YYYY-MM')         AS month
+  COALESCE(SUM(amount), 0) AS amount,
+  COUNT(*)                 AS payments,
+  to_char(now(), 'YYYY-MM') AS month
 FROM payment
 WHERE status = 'SUCCESS'
   AND payment_date >= date_trunc('month', now())
@@ -92,8 +92,8 @@ LIMIT 10;`,
       "Ranks titles by how many different profiles watched them; plays counts history rows (one per episode for series).",
     sql: `SELECT
   c.content_id, c.title, c.content_type, c.poster_url,
-  COUNT(DISTINCT wh.profile_id)::int AS viewers,
-  COUNT(*)::int                      AS plays
+  COUNT(DISTINCT wh.profile_id) AS viewers,
+  COUNT(*)                      AS plays
 FROM watch_history AS wh
 JOIN content AS c ON c.content_id = wh.content_id
 GROUP BY c.content_id
@@ -102,7 +102,7 @@ LIMIT 10;`,
   },
   genreDistribution: {
     explanation: "Titles per genre through the content_genre bridge; LEFT JOIN keeps genres with no titles at 0.",
-    sql: `SELECT g.genre_id, g.name, COUNT(cg.content_id)::int AS titles
+    sql: `SELECT g.genre_id, g.name, COUNT(cg.content_id) AS titles
 FROM genre AS g
 LEFT JOIN content_genre AS cg ON cg.genre_id = g.genre_id
 GROUP BY g.genre_id
@@ -113,8 +113,8 @@ ORDER BY titles DESC, g.name;`,
       "Every plan with its active and all-time subscription counts; LEFT JOIN keeps plans nobody has chosen.",
     sql: `SELECT
   sp.plan_id, sp.name AS plan_name, sp.price_monthly,
-  COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE')::int AS active,
-  COUNT(s.subscription_id)::int                                   AS total
+  COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE') AS active,
+  COUNT(s.subscription_id)                                    AS total
 FROM subscription_plan AS sp
 LEFT JOIN subscription AS s ON s.plan_id = sp.plan_id
 GROUP BY sp.plan_id
@@ -130,15 +130,14 @@ ORDER BY sp.price_monthly;`,
  *   1. Run the nine QUERIES[*].sql statements (above — the same text the page shows under "View SQL")
  *      in parallel (Promise.all over pool.query). For one consistent snapshot across widgets, run them
  *      sequentially on one connection inside BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY instead.
- *   2. Map snake_case columns to the camelCase fields of src/types/admin.ts. COUNT/SUM are cast to
- *      int/numeric in SQL because node-postgres returns bigint as a string (and numeric amounts need
- *      Number() in TS).
+ *   2. Map snake_case columns to the camelCase fields of src/types/admin.ts. COUNT and SUM already
+ *      arrive as numbers (pg type parsers in src/server/db/index.ts), so no casts in SQL.
  *   3. Return { widgets: { [key]: { ...QUERIES[key], data } }, generatedAt: new Date().toISOString() }.
  * SQL (one per widget; see QUERIES for the verbatim text):
- *   totalUsers           SELECT COUNT(*)::int AS count FROM users WHERE role = 'USER';
- *   activeSubscriptions  SELECT COUNT(*)::int AS count FROM subscription WHERE status = 'ACTIVE' AND end_date > now();
+ *   totalUsers           SELECT COUNT(*) AS count FROM users WHERE role = 'USER';
+ *   activeSubscriptions  SELECT COUNT(*) AS count FROM subscription WHERE status = 'ACTIVE' AND end_date > now();
  *   titles               COUNT(*) FILTER (WHERE content_type = 'MOVIE' / 'SERIES') FROM content;
- *   episodes             SELECT COUNT(*)::int AS count FROM episode;
+ *   episodes             SELECT COUNT(*) AS count FROM episode;
  *   revenueThisMonth     SUM(amount) / COUNT(*) of payment WHERE status = 'SUCCESS' within date_trunc('month', now());
  *   recentPayments       10 newest payment ⋈ subscription ⋈ users ⋈ subscription_plan, ORDER BY payment_date DESC;
  *   mostWatched          watch_history ⋈ content, COUNT(DISTINCT profile_id) AS viewers, COUNT(*) AS plays, top 10;
@@ -363,7 +362,7 @@ export async function findCatalogueId(
  *   RETURNING content_id, (xmax = 0) AS created;
  *   INSERT INTO genre (name) VALUES ($1), … ON CONFLICT (name) DO NOTHING;
  *   INSERT INTO content_genre (content_id, genre_id)
- *   SELECT c.content_id, g.genre_id FROM content AS c JOIN genre AS g ON g.name = ANY ($4::text[])
+ *   SELECT c.content_id, g.genre_id FROM content AS c JOIN genre AS g ON g.name IN ($4, $5, ...)
  *   WHERE <content key> ON CONFLICT DO NOTHING;
  *   INSERT INTO person (name, date_of_birth, photo_url) VALUES (…), …
  *   ON CONFLICT (name, date_of_birth) DO UPDATE SET photo_url = EXCLUDED.photo_url;

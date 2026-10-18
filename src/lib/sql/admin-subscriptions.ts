@@ -146,7 +146,7 @@ LIMIT $3 OFFSET $4;`,
       step: 2,
       title: "Count the matches",
       explanation: 'Same joins and filters without ORDER BY / LIMIT, for "21-40 of 312" and the page count.',
-      sql: `SELECT COUNT(*)::int AS total
+      sql: `SELECT COUNT(*) AS total
 FROM subscription AS s
 ${JOINS}
 ${where};`,

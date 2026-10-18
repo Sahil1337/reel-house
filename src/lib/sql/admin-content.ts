@@ -20,7 +20,7 @@ const GENRES_SUBQUERY = `COALESCE((
     FROM content_genre AS cg
     JOIN genre AS g ON g.genre_id = cg.genre_id
     WHERE cg.content_id = c.content_id
-  ), '[]'::json) AS genres`;
+  ), '[]') AS genres`;
 
 /** WHERE terms for the filters that are set; $n numbering starts at 1. */
 function whereClause(filters: AdminContentFilters): { text: string; params: SqlParam[] } {
@@ -63,9 +63,9 @@ export function buildListContentSql(filters: AdminContentFilters): SqlStatement[
   c.content_id, c.title, c.content_type, c.release_date, c.age_rating, c.poster_url,
   ${GENRES_SUBQUERY},
   CASE WHEN c.content_type = 'SERIES'
-       THEN (SELECT COUNT(*)::int FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
+       THEN (SELECT COUNT(*) FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
   CASE WHEN c.content_type = 'SERIES'
-       THEN (SELECT COUNT(*)::int FROM episode AS e
+       THEN (SELECT COUNT(*) FROM episode AS e
              JOIN season AS s ON s.season_id = e.season_id
              WHERE s.content_id = c.content_id) END AS episode_count
 FROM content AS c
@@ -82,7 +82,7 @@ LIMIT $${limitPlaceholder} OFFSET $${limitPlaceholder + 1};`,
     explanation:
       "The same WHERE without LIMIT, so the pager knows how many pages there are. Read-only; no transaction is " +
       "needed because a count that is one row off under concurrent writes is harmless.",
-    sql: `SELECT COUNT(*)::int AS total
+    sql: `SELECT COUNT(*) AS total
 FROM content AS c${where.text ? `\n${where.text}` : ""};`,
     params: where.params,
     table: "content",

@@ -861,7 +861,7 @@ SELECT content_id,
 -- the filters, applied to the candidate ids
 SELECT c.content_id, c.release_date
   FROM content AS c
- WHERE c.content_id = ANY($ids)
+ WHERE c.content_id IN ($ids...)          -- one placeholder per candidate id
    AND maturity_of(c.age_rating) <= $maturity::maturity_level
    AND NOT (c.content_type = 'MOVIE' AND EXISTS (
          SELECT 1 FROM watch_history AS w

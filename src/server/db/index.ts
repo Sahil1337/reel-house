@@ -1,8 +1,14 @@
 import "server-only";
 
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import * as schema from "./schema";
+
+// pg returns bigint (COUNT, SUM of ints) and numeric (money) as strings, and dates as JS Dates.
+// Parse them once here so queries stay plain SQL: no COUNT(*)::int, no release_date::text.
+types.setTypeParser(types.builtins.INT8, Number);
+types.setTypeParser(types.builtins.NUMERIC, Number);
+types.setTypeParser(types.builtins.DATE, (value) => value); // keep 'YYYY-MM-DD'
 
 export type Database = NodePgDatabase<typeof schema>;
 

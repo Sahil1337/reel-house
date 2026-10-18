@@ -59,18 +59,18 @@ function toAdminRow(content: ContentDetail): AdminContentRow {
  *      under concurrent writes is harmless (read-only, no transaction needed).
  *   3. pageCount = max(1, ceil(total / pageSize)). If page > pageCount, answer with the LAST page (re-run
  *      the page query with the clamped offset) instead of an empty one, and report the page you returned.
- *   4. Map snake_case columns to AdminContentRow (release_date as 'YYYY-MM-DD' text: set the date type
- *      parser or select to_char(c.release_date, 'YYYY-MM-DD'); genres arrives as parsed JSON).
+ *   4. Map snake_case columns to AdminContentRow (release_date already arrives as 'YYYY-MM-DD' text via
+ *      the pg DATE parser); genres arrives as parsed JSON.
  * SQL (the WHERE terms are added only for the filters that were sent; $n numbering follows):
  *   SELECT
  *     c.content_id, c.title, c.content_type, c.release_date, c.age_rating, c.poster_url,
  *     COALESCE((SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
  *               FROM content_genre AS cg JOIN genre AS g ON g.genre_id = cg.genre_id
- *               WHERE cg.content_id = c.content_id), '[]'::json) AS genres,
+ *               WHERE cg.content_id = c.content_id), '[]') AS genres,
  *     CASE WHEN c.content_type = 'SERIES'
- *          THEN (SELECT COUNT(*)::int FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
+ *          THEN (SELECT COUNT(*) FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
  *     CASE WHEN c.content_type = 'SERIES'
- *          THEN (SELECT COUNT(*)::int FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
+ *          THEN (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
  *                WHERE s.content_id = c.content_id) END AS episode_count
  *   FROM content AS c
  *   WHERE c.title ILIKE $1 ESCAPE '\'                                          -- q  ($1 = '%' || escaped q || '%')
@@ -79,7 +79,7 @@ function toAdminRow(content: ContentDetail): AdminContentRow {
  *                 WHERE cg.content_id = c.content_id AND cg.genre_id = $3)     -- genre
  *   ORDER BY c.title, c.content_id
  *   LIMIT $4 OFFSET $5;
- *   SELECT COUNT(*)::int AS total FROM content AS c WHERE <same filters>;
+ *   SELECT COUNT(*) AS total FROM content AS c WHERE <same filters>;
  *   -- The subqueries run only for the <= pageSize rows that survive LIMIT; aggregating with LEFT JOIN +
  *   -- GROUP BY would multiply rows (genres x seasons x episodes) before COUNT DISTINCT can fix it.
  * Tables: content, content_genre, genre, season, episode  ·  Keys/constraints relied on: content_genre
@@ -139,15 +139,15 @@ export async function listContentForAdmin(filters: AdminContentFilters): Promise
  * SQL:
  *   SELECT
  *     c.content_id, c.title, c.content_type,
- *     (SELECT COUNT(*)::int FROM content_genre   WHERE content_id = c.content_id) AS content_genre,
- *     (SELECT COUNT(*)::int FROM content_credit  WHERE content_id = c.content_id) AS content_credit,
- *     (SELECT COUNT(*)::int FROM season          WHERE content_id = c.content_id) AS season,
- *     (SELECT COUNT(*)::int FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
- *       WHERE s.content_id = c.content_id)                                         AS episode,
- *     (SELECT COUNT(*)::int FROM watch_history   WHERE content_id = c.content_id) AS watch_history,
- *     (SELECT COUNT(*)::int FROM my_list         WHERE content_id = c.content_id) AS my_list,
- *     (SELECT COUNT(*)::int FROM rating          WHERE content_id = c.content_id) AS rating,
- *     (SELECT COUNT(*)::int FROM recommendation  WHERE content_id = c.content_id) AS recommendation
+ *     (SELECT COUNT(*) FROM content_genre   WHERE content_id = c.content_id) AS content_genre,
+ *     (SELECT COUNT(*) FROM content_credit  WHERE content_id = c.content_id) AS content_credit,
+ *     (SELECT COUNT(*) FROM season          WHERE content_id = c.content_id) AS season,
+ *     (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
+ *       WHERE s.content_id = c.content_id)                                     AS episode,
+ *     (SELECT COUNT(*) FROM watch_history   WHERE content_id = c.content_id) AS watch_history,
+ *     (SELECT COUNT(*) FROM my_list         WHERE content_id = c.content_id) AS my_list,
+ *     (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating,
+ *     (SELECT COUNT(*) FROM recommendation  WHERE content_id = c.content_id) AS recommendation
  *   FROM content AS c
  *   WHERE c.content_id = $1;
  * Tables: content, content_genre, content_credit, season, episode, watch_history, my_list, rating,

@@ -631,7 +631,7 @@ Other conventions:
 
 - Shape of a row (`AdminSubscriptionRow`): `subscriptionId, userId, userName, userEmail, planId, planName, planPriceMonthly, startDate, endDate (ISO or null while PENDING), status, createdAt`.
 - Money arrives as `numeric` strings, so use `Number()` in the mapper (README 3.6).
-- Counts: cast `COUNT(*)` to `::int` in SQL (a bigint arrives as a string).
+- Counts: plain `COUNT(*)`; the pg parser in src/server/db/index.ts already returns it as a number.
 
 Constraints these functions rely on (a copy of the real definitions from `drizzle/0002_fix_subscription_check.sql`):
 
@@ -658,8 +658,8 @@ CREATE UNIQUE INDEX subscription_one_active_per_user ON subscription (user_id) W
 
 ```sql
 SELECT p.plan_id, p.name, p.price_monthly, p.video_quality, p.max_devices,
-       COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE')::int AS active_subscribers,
-       COUNT(s.subscription_id)::int                                    AS total_subscriptions
+       COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE') AS active_subscribers,
+       COUNT(s.subscription_id)                                    AS total_subscriptions
 FROM subscription_plan AS p
 LEFT JOIN subscription AS s ON s.plan_id = p.plan_id
 GROUP BY p.plan_id
@@ -765,7 +765,7 @@ RETURNING plan_id, name, price_monthly, video_quality, max_devices;
 ```sql
 DELETE FROM subscription_plan WHERE plan_id = $1;
 -- only after a 23503, to build the message:
-SELECT COUNT(*)::int AS subscriptions FROM subscription WHERE plan_id = $1;
+SELECT COUNT(*) AS subscriptions FROM subscription WHERE plan_id = $1;
 ```
 
 **Rules to respect:**
@@ -813,7 +813,7 @@ ORDER BY s.created_at DESC, s.subscription_id DESC
 LIMIT $3 OFFSET $4;
 
 -- same FROM / JOIN / WHERE, for the page count:
-SELECT COUNT(*)::int AS total FROM subscription AS s JOIN users AS u ... JOIN subscription_plan AS p ... WHERE ...;
+SELECT COUNT(*) AS total FROM subscription AS s JOIN users AS u ... JOIN subscription_plan AS p ... WHERE ...;
 ```
 
 **Rules to respect:**

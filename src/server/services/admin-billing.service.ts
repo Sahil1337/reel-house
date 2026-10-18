@@ -115,8 +115,8 @@ function addMonths(iso: string, months: number): string {
  *      node-postgres returns bigint as a string, and price_monthly (numeric) needs Number() in TS.
  * SQL:
  *   SELECT p.plan_id, p.name, p.price_monthly, p.video_quality, p.max_devices,
- *          COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE')::int AS active_subscribers,
- *          COUNT(s.subscription_id)::int                                    AS total_subscriptions
+ *          COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE') AS active_subscribers,
+ *          COUNT(s.subscription_id)                                    AS total_subscriptions
  *   FROM subscription_plan AS p
  *   LEFT JOIN subscription AS s ON s.plan_id = p.plan_id
  *   GROUP BY p.plan_id
@@ -254,7 +254,7 @@ export async function updatePlan(planId: number, input: UpdatePlanInput): Promis
  * SQL:
  *   DELETE FROM subscription_plan WHERE plan_id = $1;
  *   -- only after a 23503, for the message:
- *   SELECT COUNT(*)::int AS subscriptions FROM subscription WHERE plan_id = $1;
+ *   SELECT COUNT(*) AS subscriptions FROM subscription WHERE plan_id = $1;
  * Tables: subscription_plan (writes), subscription (read for the message)  ·  Keys/constraints relied on:
  *   FK subscription.plan_id -> subscription_plan ON DELETE RESTRICT (23503); PK plan_id.
  * Transaction: no (the DELETE is atomic; the count is outside it)  ·  Idempotent: yes in effect (a second
@@ -307,7 +307,7 @@ export async function deletePlan(planId: number): Promise<void> {
  *     AND ($2::text IS NULL OR u.email ILIKE '%' || $2 || '%' ESCAPE '\')
  *   ORDER BY s.created_at DESC, s.subscription_id DESC
  *   LIMIT $3 OFFSET $4;
- *   -- and the same FROM / JOIN / WHERE with  SELECT COUNT(*)::int AS total  for the page count.
+ *   -- and the same FROM / JOIN / WHERE with  SELECT COUNT(*) AS total  for the page count.
  * Tables: subscription, users, subscription_plan  ·  Keys/constraints relied on: FKs make both joins
  *   inner-join safe (every subscription has a user and a plan); users has UNIQUE INDEX users_email_key
  *   (lower(email)), which serves equality lookups but NOT a leading-wildcard ILIKE, so the search is a scan

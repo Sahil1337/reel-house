@@ -66,7 +66,7 @@ export interface ContentSearch {
  *          c.age_rating, maturity_of(c.age_rating) AS maturity_level, c.poster_url, c.backdrop_url,
  *          COALESCE((SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
  *                    FROM content_genre AS cg JOIN genre AS g ON g.genre_id = cg.genre_id
- *                    WHERE cg.content_id = c.content_id), '[]'::json) AS genres
+ *                    WHERE cg.content_id = c.content_id), '[]') AS genres
  *   FROM content AS c
  *   LEFT JOIN popularity AS pop ON pop.content_id = c.content_id
  *   WHERE ($1::maturity_level IS NULL OR maturity_of(c.age_rating) <= $1)
@@ -135,7 +135,7 @@ export async function searchContent(query: ContentSearch): Promise<ContentSummar
  *
  *   -- their episodes, grouped by season_id in code
  *   SELECT episode_id, season_id, episode_number, title, description, release_date, duration_minutes, still_url
- *   FROM episode WHERE season_id = ANY($2::int[]) ORDER BY season_id, episode_number;
+ *   FROM episode WHERE season_id IN ($2, $3, ...) ORDER BY season_id, episode_number;  -- one $n per season_id
  * Tables: content, content_genre, genre, content_credit, person, season, episode  ·  Keys/constraints relied
  *   on: content PK; content_credit PK (content_id, person_id, role); season UNIQUE (content_id,
  *   season_number); episode UNIQUE (season_id, episode_number).

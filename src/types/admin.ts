@@ -20,7 +20,7 @@ export interface TmdbSearchResult {
   alreadyInCatalog: boolean;
 }
 
-/** A value bound to a $n placeholder. Arrays bind to array parameters (`= ANY($n::int[])`). */
+/** A value bound to a $n placeholder. Arrays bind to array parameters; lists use `IN ($4, $5, ...)`, one placeholder per item, instead. */
 export type SqlParam = string | number | boolean | null | (string | number)[];
 
 /** One statement of a generated SQL script, for display. */
