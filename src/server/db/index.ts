@@ -13,22 +13,36 @@ types.setTypeParser(types.builtins.DATE, (value) => value); // keep 'YYYY-MM-DD'
 export type Database = NodePgDatabase<typeof schema>;
 
 // Cached on globalThis so dev hot reload doesn't open a new pool per reload.
-const globalForDb = globalThis as unknown as { __reelhouseDb?: Database };
+const globalForDb = globalThis as unknown as { __reelhouseDb?: Database; __reelhousePool?: Pool };
 
-function createDb(): Database {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("DATABASE_URL is not set. Add the Neon connection string to .env (see .env.example).");
+function getPool(): Pool {
+  if (!globalForDb.__reelhousePool) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error("DATABASE_URL is not set. Add the Neon connection string to .env (see .env.example).");
+    }
+    globalForDb.__reelhousePool = new Pool({ connectionString, max: 10 });
   }
-  const pool = new Pool({ connectionString, max: 10 });
-  return drizzle(pool, { schema, casing: "snake_case" });
+  return globalForDb.__reelhousePool;
 }
 
 function getDb(): Database {
-  return (globalForDb.__reelhouseDb ??= createDb());
+  if (!globalForDb.__reelhouseDb) {
+    const p = getPool();
+    globalForDb.__reelhouseDb = drizzle(p, { schema, casing: "snake_case" });
+  }
+  return globalForDb.__reelhouseDb;
 }
 
 // Lazy: nothing connects (or throws on a missing DATABASE_URL) until the first query.
+export const pool: Pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    const real = getPool();
+    const value = Reflect.get(real, prop, real);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
+
 export const db: Database = new Proxy({} as Database, {
   get(_target, prop) {
     const real = getDb();

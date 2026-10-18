@@ -54,10 +54,10 @@ Phase 2: Content Catalogue Reads [COMPLETED]
   └── 2.4 getSimilarTitles           (Shared-genre self-join with recent watch tie-break) [DONE]
            │
            ▼
-Phase 3: Admin Dashboard & Live Ingestion
-  ├── 3.1 Natural Key Matchers       (markInCatalog, findCatalogueId)
-  ├── 3.2 Admin Dashboard            (9 analytical widget queries)
-  └── 3.3 TMDB Import Transaction    (Multi-table atomic ingestion in dependency order)
+Phase 3: Admin Dashboard & Live Ingestion [COMPLETED]
+  ├── 3.1 Natural Key Matchers       (markInCatalog, findCatalogueId) [DONE]
+  ├── 3.2 Admin Dashboard            (9 analytical widget queries) [DONE]
+  └── 3.3 TMDB Import Transaction    (Multi-table atomic ingestion in dependency order) [DONE]
            │
            ▼
 Phase 4: Admin Content Management

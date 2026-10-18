@@ -9,17 +9,15 @@
  *           401 / 403 not an admin · 404 TMDB has no such title
  *           503 { error } TMDB_API_KEY missing · 502 { error } TMDB failed · 500 { error } the transaction rolled back
  *
- * Calls: requireAdmin → importTitle (admin.service).
- * TODO (with the real importTitle): fetch the title on the server first — getTmdbClient
- *   (src/app/api/_lib/tmdb.ts) + fetchTitle (src/lib/tmdb/catalog.ts), TMDB errors via tmdbErrorResponse —
- *   and pass it as importTitle(input, title). Not wired yet: the mock import needs no TMDB call.
+ * Calls: requireAdmin → getTmdbClient + fetchTitle → importTitle (admin.service).
  */
 import { z } from "zod";
 
-import { importTitle } from "@/server/services/admin.service";
-
 import { requireAdmin } from "@/app/api/_lib/auth";
 import { handleError } from "@/app/api/_lib/http";
+import { getTmdbClient, tmdbErrorResponse } from "@/app/api/_lib/tmdb";
+import { fetchTitle } from "@/lib/tmdb/catalog";
+import { importTitle } from "@/server/services/admin.service";
 
 const importSchema = z.object({
   type: z.enum(["movie", "tv"]),
@@ -34,7 +32,18 @@ export async function POST(request: Request) {
     if (!input.success) {
       return Response.json({ error: 'Send { type: "movie" | "tv", tmdbId: number }.' }, { status: 400 });
     }
-    const result = await importTitle(input.data);
+
+    const tmdb = getTmdbClient();
+    if (tmdb instanceof Response) return tmdb;
+
+    let title: Awaited<ReturnType<typeof fetchTitle>>;
+    try {
+      title = await fetchTitle(tmdb, input.data.type, input.data.tmdbId);
+    } catch (error) {
+      return tmdbErrorResponse(error);
+    }
+
+    const result = await importTitle(input.data, title);
     return Response.json(result, { status: result.created ? 201 : 200 });
   } catch (error) {
     return handleError(error);
