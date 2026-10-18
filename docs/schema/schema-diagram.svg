@@ -18,7 +18,7 @@
 <path class="ln" d="M1040,572 L1076,572 L1076,621 L1104,621 A6,6 0 0 1 1116,621 L1199,621"/>
 <path class="ln" d="M1040,763 L1076,763 L1076,621 L1104,621 A6,6 0 0 1 1116,621 L1199,621"/>
 <path class="ln" d="M1210,262 L1145,262 L1145,621 L1199,621"/>
-<path class="ln" d="M1040,313 L1070,313 A6,6 0 0 1 1082,313 L1110,313 L1110,1305 L2210,1305 L2210,781 L2196,781"/>
+<path class="ln" d="M1040,313 L1070,313 A6,6 0 0 1 1082,313 L1110,313 L1110,1312 L2210,1312 L2210,781 L2196,781"/>
 <path class="ln" d="M1040,988 L1058,988 L1058,1335 L2235,1335 L2235,245 L2196,245"/>
 <path class="ln" d="M1575,211 L1530,211 L1530,621 L1481,621"/>
 <path class="ln" d="M1575,441 L1530,441 L1530,621 L1481,621"/>
@@ -322,29 +322,28 @@
 <rect x="1945" y="720" width="240" height="316" fill="none" stroke="#1a1a1a" stroke-width="1.8"/>
 </g>
 <g id="views">
-<text x="1575" y="1112" font-size="13" font-style="italic" fill="#555">Views — derived from the tables above; no keys, no foreign keys</text>
-<rect x="1575" y="1130" width="250" height="140" fill="#fbfbfb"/>
-<rect x="1575" y="1130" width="250" height="50" fill="#f0f0f0"/>
-<text class="hd" x="1700" y="1153" text-anchor="middle" fill="#333">INTERACTION_SCORE</text>
-<text x="1700" y="1170" text-anchor="middle" font-size="13" font-style="italic" fill="#666">view</text>
-<text x="1589" y="1200" font-size="15" fill="#333">profile_id</text>
-<line x1="1575" y1="1210" x2="1825" y2="1210" stroke="#d6d6d6" stroke-width="1"/>
-<text x="1589" y="1230" font-size="15" fill="#333">content_id</text>
-<line x1="1575" y1="1240" x2="1825" y2="1240" stroke="#d6d6d6" stroke-width="1"/>
-<text x="1589" y="1260" font-size="15" fill="#333">score</text>
-<line x1="1575" y1="1180" x2="1825" y2="1180" stroke="#777" stroke-width="1" stroke-dasharray="6 4"/>
-<rect x="1575" y="1130" width="250" height="140" fill="none" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5"/>
-<rect x="1945" y="1130" width="240" height="140" fill="#fbfbfb"/>
-<rect x="1945" y="1130" width="240" height="50" fill="#f0f0f0"/>
-<text class="hd" x="2065" y="1153" text-anchor="middle" fill="#333">CONTENT_SIMILARITY</text>
-<text x="2065" y="1170" text-anchor="middle" font-size="13" font-style="italic" fill="#666">materialized view</text>
-<text x="1959" y="1200" font-size="15" fill="#333">content_a</text>
-<line x1="1945" y1="1210" x2="2185" y2="1210" stroke="#d6d6d6" stroke-width="1"/>
-<text x="1959" y="1230" font-size="15" fill="#333">content_b</text>
-<line x1="1945" y1="1240" x2="2185" y2="1240" stroke="#d6d6d6" stroke-width="1"/>
-<text x="1959" y="1260" font-size="15" fill="#333">score</text>
-<line x1="1945" y1="1180" x2="2185" y2="1180" stroke="#777" stroke-width="1" stroke-dasharray="6 4"/>
-<rect x="1945" y="1130" width="240" height="140" fill="none" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5"/>
+<text x="1575" y="1054" font-size="13" font-style="italic" fill="#555">View — derived from the tables above; no keys, no foreign keys</text>
+<rect x="1575" y="1064" width="250" height="238" fill="#fbfbfb"/>
+<rect x="1575" y="1064" width="250" height="46" fill="#f0f0f0"/>
+<text class="hd" x="1700" y="1087" text-anchor="middle" fill="#333">GENRE_TASTE</text>
+<text x="1700" y="1104" text-anchor="middle" font-size="13" font-style="italic" fill="#666">view</text>
+<text x="1589" y="1127" font-size="15" fill="#333">profile_id</text>
+<text x="1589" y="1151" font-size="15" fill="#333">genre_id</text>
+<line x1="1575" y1="1134" x2="1825" y2="1134" stroke="#d6d6d6" stroke-width="1"/>
+<text x="1589" y="1175" font-size="15" fill="#333">genre</text>
+<line x1="1575" y1="1158" x2="1825" y2="1158" stroke="#d6d6d6" stroke-width="1"/>
+<text x="1589" y="1199" font-size="15" fill="#333">watch_score</text>
+<line x1="1575" y1="1182" x2="1825" y2="1182" stroke="#d6d6d6" stroke-width="1"/>
+<text x="1589" y="1223" font-size="15" fill="#333">rating_score</text>
+<line x1="1575" y1="1206" x2="1825" y2="1206" stroke="#d6d6d6" stroke-width="1"/>
+<text x="1589" y="1247" font-size="15" fill="#333">my_list_score</text>
+<line x1="1575" y1="1230" x2="1825" y2="1230" stroke="#d6d6d6" stroke-width="1"/>
+<text x="1589" y="1271" font-size="15" fill="#333">pick_score</text>
+<line x1="1575" y1="1254" x2="1825" y2="1254" stroke="#d6d6d6" stroke-width="1"/>
+<text x="1589" y="1295" font-size="15" fill="#333">taste_score</text>
+<line x1="1575" y1="1278" x2="1825" y2="1278" stroke="#d6d6d6" stroke-width="1"/>
+<line x1="1575" y1="1110" x2="1825" y2="1110" stroke="#777" stroke-width="1" stroke-dasharray="6 4"/>
+<rect x="1575" y="1064" width="250" height="238" fill="none" stroke="#555" stroke-width="1.6" stroke-dasharray="7 5"/>
 </g>
 <g class="labels">
 <text class="lb" x="365" y="205.25" text-anchor="middle">CREATES</text>
@@ -355,7 +354,7 @@
 <text class="lb" x="900" y="119.25" text-anchor="middle">RECEIVES</text>
 <text class="lb" x="1068.25" y="452" text-anchor="middle" transform="rotate(-90 1068.25 452)">RECORDS</text>
 <text class="lb" x="1161.25" y="430" text-anchor="middle" transform="rotate(-90 1161.25 430)">SUGGESTS</text>
-<text class="lb" x="1340" y="1299.25" text-anchor="middle">OF_EPISODE</text>
+<text class="lb" x="1340" y="1306.25" text-anchor="middle">OF_EPISODE</text>
 <text class="lb" x="1340" y="1350.25" text-anchor="middle">PREFERS</text>
 <text class="lb" x="1547.25" y="735" text-anchor="middle" transform="rotate(-90 1547.25 735)">COMPRISES</text>
 <text class="lb" x="1885" y="239.25" text-anchor="middle">BELONGS_TO</text>

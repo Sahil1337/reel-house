@@ -8,6 +8,13 @@
       "when": 1792348686127,
       "tag": "0000_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792352856495,
+      "tag": "0001_genre_taste_view",
+      "breakpoints": true
     }
   ]
 }

@@ -22,7 +22,7 @@ Services each person owns:
 - Yash (B) and Sahil (C) keep working against the mock-backed guards until Tejasva merges them.
 - Tejasva also writes `profile_genre_preference` (onboarding), which Sahil's cold start (the first recommendations for a profile with no history) reads.
 
-The schema itself is [`../schema/SCHEMA.md`](../schema/SCHEMA.md). It is the source of truth for tables, constraints, ranking formulas and the payment flow. The Drizzle schema in `src/server/db/schema/` and the single migration `drizzle/0000_schema.sql` already implement it. (Drizzle is the TypeScript database toolkit we use; a migration is a numbered SQL file that changes the database structure.)
+The schema itself is [`../schema/SCHEMA.md`](../schema/SCHEMA.md). It is the source of truth for tables, constraints, ranking formulas and the payment flow. The Drizzle schema in `src/server/db/schema/` and the two migrations (`drizzle/0000_schema.sql` and `drizzle/0001_genre_taste_view.sql`) already implement it. (Drizzle is the TypeScript database toolkit we use; a migration is a numbered SQL file that changes the database structure.)
 
 ## Table of contents
 
@@ -113,7 +113,7 @@ data/
 docs/
   schema/                SCHEMA.md (the schema, source of truth) + schema-diagram.png/.svg
   backend/               this guide + one file per person
-drizzle/                 0000_schema.sql (the whole schema), meta/  (migrations; commit them)
+drizzle/                 0000_schema.sql (17 tables, maturity_of()), 0001_genre_taste_view.sql (the view), meta/  (migrations; commit them)
 drizzle.config.ts
 scripts/
   import-tmdb.mts        TMDB -> data/tmdb (already works)
@@ -163,8 +163,8 @@ Some parts already work against the real database or real services. Others still
 - **`GET /api/admin/tmdb/search` and `GET /api/admin/tmdb/:type/:tmdbId`: real.**
   - They make live TMDB calls (`TMDB_API_KEY`) and generate the SQL preview for real (`src/lib/sql/import-title.ts`).
   - Only `markInCatalog` / `findCatalogueId` (database lookups) are stubs.
-- **`src/server/db` (Drizzle schema, `db`), the `drizzle/0000_schema.sql` migration, and the seed: real and already applied to Neon.**
-  - Tables, enums, `maturity_of()` and the `unaccent` extension exist (there are no views), and the database is **seeded**.
+- **`src/server/db` (Drizzle schema, `db`), the `drizzle/0000_schema.sql` and `drizzle/0001_genre_taste_view.sql` migrations, and the seed: real and already applied to Neon.**
+  - Tables, enums, `maturity_of()` and the `unaccent` extension and the `genre_taste` view exist, and the database is **seeded**.
   - Nothing queries them yet (the services still return mocks), so a service can read real rows the moment you implement it.
 - **Every other service function: stub.**
   - It has `// TODO: implement`, returns mock data from `src/server/mocks`, and persists nothing.
@@ -286,7 +286,7 @@ The schema is split into one file per area.
 - **`billing.ts`:** `subscriptionPlan`, `subscription`, `payment`.
 - **`catalog.ts`:** `genre`, `content`, `contentGenre`, `season`, `episode`, `person`, `contentCredit`.
 - **`activity.ts`:** `watchHistory`, `myList`, `rating`.
-- **`recommendations.ts`:** `recommendation`. There are no views: recommendation and similarity queries read the base tables directly.
+- **`recommendations.ts`:** `recommendation`, plus the `genreTaste` view declared with `pgView("genre_taste", …).existing()` (the view is created by `drizzle/0001_genre_taste_view.sql`; `.existing()` stops drizzle-kit from generating SQL for it). Similarity queries read the base tables directly.
 - **`index.ts`:** barrel (a file that re-exports everything) for all of the above.
 
 Table object names (camelCase TS) map to tables as follows: `users`, `profile`, `profileGenrePreference` (`profile_genre_preference`), `subscriptionPlan` (`subscription_plan`), `subscription`, `payment`, `genre`, `content`, `contentGenre`, `season`, `episode`, `person`, `contentCredit`, `watchHistory`, `myList`, `rating`, `recommendation`.
@@ -352,9 +352,10 @@ The raw pool is `db.$client` (a `pg.Pool`). Use it where you need `$n` placehold
 
 A migration is a numbered SQL file that moves the database from one structure to the next. Following the same steps every time keeps the three of us from clashing.
 
-The one existing migration:
+The two existing migrations:
 
-- `drizzle/0000_schema.sql`: the whole schema. Tables, enums, constraints and indexes (including the corrected `subscription_dates_check`), the `maturity_of()` function and `CREATE EXTENSION unaccent`.
+- `drizzle/0000_schema.sql`: all 17 tables. Enums, constraints and indexes (including the corrected `subscription_dates_check`), the `maturity_of()` function and `CREATE EXTENSION unaccent`.
+- `drizzle/0001_genre_taste_view.sql`: the `genre_taste` view (per-profile, per-genre taste scores). Hand-written SQL, because drizzle-kit does not generate a view from `pgView(...).existing()`.
 - `drizzle/meta/` is drizzle-kit's bookkeeping. Commit it.
 
 Daily commands (all are npm scripts in `package.json`):
@@ -908,7 +909,7 @@ Phase 1 is the schema work. It is done together, before anyone starts Phase 2. T
 
 ### 7.1 Decided
 
-- [x] 17 tables, no views. CONTENT_CAST + CONTENT_DIRECTOR are merged into `content_credit` (`role` = `ACTOR` / `DIRECTOR`). Extra tables: `profile_genre_preference`, `recommendation`.
+- [x] 17 tables and one view, `genre_taste`. CONTENT_CAST + CONTENT_DIRECTOR are merged into `content_credit` (`role` = `ACTOR` / `DIRECTOR`). Extra tables: `profile_genre_preference`, `recommendation`.
 - [x] `users` as the table name (`user` is reserved), with `role` (`USER` / `ADMIN`).
 - [x] Surrogate keys (generated ids) are `INT GENERATED ALWAYS AS IDENTITY`. Natural keys are UNIQUE (`email` case-insensitively; `content (title, content_type, release_date)` and `person (name, date_of_birth)` as `NULLS NOT DISTINCT`).
 - [x] TMDB ids are **not** stored. Import and seed find rows by natural keys.
@@ -918,7 +919,6 @@ Phase 1 is the schema work. It is done together, before anyone starts Phase 2. T
   - PK is `(profile_id, content_id)`.
   - **Dropped `recommendation_id`, `source_content_id`, `reason`.**
   - Reason strings are computed when Home is built.
-  - The "Because you liked X" anchor is computed from `rating` and `watch_history` and returned as `HomeRow.anchor`.
   - `rec_status` is the feedback loop.
 - [x] **Dropped `profile.preferred_language`** (no language data in the catalogue to filter on).
 - [x] **Explicitly kept:**
@@ -931,8 +931,8 @@ Phase 1 is the schema work. It is done together, before anyone starts Phase 2. T
 - [x] Payments use Razorpay. `subscription` is the order's local counterpart (PENDING until captured). `payment` is one row per attempt, idempotent on `transaction_ref`.
 - [x] Billing foreign keys are `ON DELETE RESTRICT` (deleting a referenced row is refused). Everything profile-scoped is `ON DELETE CASCADE` (deleting the profile deletes its rows too).
 - [x] Drizzle ORM + `drizzle-kit` migrations on Neon, `pg` Pool driver.
-- [x] Drizzle schema (`src/server/db/schema/*.ts`), `drizzle.config.ts`, the single migration `0000_schema.sql` (tables, `maturity_of()`, `unaccent`), client `src/server/db/index.ts`.
-- [x] No views. Recommendations are a two-layer engine over the base tables (genre taste, then trending), with no trained model (pending the teacher's confirmation, below). Spec: `plans/activity-recommendations/plan.md`.
+- [x] Drizzle schema (`src/server/db/schema/*.ts`), `drizzle.config.ts`, the two migrations `0000_schema.sql` (tables, `maturity_of()`, `unaccent`) and `0001_genre_taste_view.sql` (the `genre_taste` view), client `src/server/db/index.ts`.
+- [x] One view, `genre_taste`. Recommendations are a one-layer engine (genre taste read from the view, ties broken by release date), with no trained model (pending the teacher's confirmation, below). Spec: `plans/activity-recommendations/plan.md`.
 
 ### 7.2 Still open (from SCHEMA.md "Still open")
 
@@ -1006,7 +1006,7 @@ A PR that makes `findUserById` / `getOwnedProfile` real (the guard swap) is anno
 - **Day 2-5, Yash (B):** Billing reads (`listPlans`, `getPlan`, `getActiveSubscription`, `listSubscriptions`, `listPayments`), `createPendingSubscription`, Razorpay test-mode setup.
 - **Day 2-5, Sahil (C):** `activity.service` (my list, ratings, progress, history, title activity), then a check that ratings and progress change the genre taste.
 - **Day 6-8, Yash (B):** Razorpay: order, verify, webhook, test-mode run with a tunnel.
-- **Day 6-9, Sahil (C):** Recommendations: the two-layer engine (genre taste, trending), built from `plans/activity-recommendations/plan.md`.
+- **Day 6-9, Sahil (C):** Recommendations: the genre-taste engine (top picks, genre rows), built from `plans/activity-recommendations/plan.md`.
 - **Day 6-8, Tejasva (A):** `getSimilarTitles` (shared-genre self-join, no dependency on Sahil), auth hardening (dummy hash, rate limit, hashing and session decisions), index/perf pass, dashboard polish.
 - **Day 9-10, all:** Integration: UI flows end to end, delete `src/server/mocks`, README cleanup, report/demo script.
 

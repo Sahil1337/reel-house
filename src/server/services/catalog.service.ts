@@ -2,8 +2,8 @@
  * Catalogue reads: search and browse, one title's full detail, the genre list and "More like this".
  *
  * Tables it reads: content, genre, content_genre, person, content_credit, season, episode — plus
- * watch_history (recent viewers, the tie-break for similar titles). Writes nothing; the catalogue is
- * written only by admin.service.importTitle.
+ * watch_history (popularity for search ranking). Writes nothing; the catalogue is written only by
+ * admin.service.importTitle.
  *
  * Maturity is never stored: every catalogue query that filters by profile uses the SQL function
  * maturity_of(c.age_rating) (docs/schema/SCHEMA.md), whose enum order is KIDS < TEEN < ADULT and which maps a
@@ -182,25 +182,20 @@ export async function listGenres(): Promise<Genre[]> {
  *   1. getContentDetail(contentId) → NotFoundError for an unknown id (so the route answers 404).
  *   2. Self-join content_genre: for every other title, count the genres it shares with this one.
  *   3. Keep titles the profile may see (maturity_of(age_rating) <= $maturityLevel; null = no filter).
- *   4. ORDER BY shared genres DESC, then recent viewers (distinct profiles in watch_history over the last
- *      7 days) DESC, then release_date DESC; LIMIT $limit (12 on the title page); attach genres as in
- *      searchContent.
+ *   4. ORDER BY shared genres DESC, then release_date DESC (newest first); LIMIT $limit (12 on the title
+ *      page); attach genres as in searchContent.
  * SQL:
  *   SELECT c.content_id, COUNT(*) AS shared_genres
  *     FROM content_genre AS a
  *     JOIN content_genre AS b ON b.genre_id = a.genre_id AND b.content_id <> a.content_id
  *     JOIN content AS c ON c.content_id = b.content_id
- *     LEFT JOIN (SELECT content_id, COUNT(DISTINCT profile_id) AS viewers
- *                  FROM watch_history
- *                 WHERE watched_at > now() - interval '7 days'
- *                 GROUP BY content_id) AS p ON p.content_id = c.content_id
  *    WHERE a.content_id = $1
  *      AND ($2::maturity_level IS NULL OR maturity_of(c.age_rating) <= $2)
- *    GROUP BY c.content_id, c.release_date, p.viewers
- *    ORDER BY shared_genres DESC, COALESCE(p.viewers, 0) DESC, c.release_date DESC NULLS LAST
+ *    GROUP BY c.content_id, c.release_date
+ *    ORDER BY shared_genres DESC, c.release_date DESC NULLS LAST
  *    LIMIT $3;
  *   -- then load the ContentSummary columns + genres for those ids, keeping this order.
- * Tables: content_genre, content, watch_history, genre  ·  Keys/constraints relied on: content_genre PK
+ * Tables: content_genre, content, genre  ·  Keys/constraints relied on: content_genre PK
  *   (content_id, genre_id) and content_genre_genre_idx (genre_id) for the self-join; maturity_of().
  * Transaction: no  ·  Idempotent: yes (read-only)
  * Edge cases: a title with no genres has no similar titles ([]); with few titles in its genres the list

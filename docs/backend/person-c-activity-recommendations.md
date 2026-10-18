@@ -1,10 +1,10 @@
 # Person C: Sahil — activity & recommendations
 
-Sahil, you own two things. The first is **what a profile does**: watch progress, History, My List, ratings, and the state of a title page. The second is **what Home shows because of it**: a simple two-layer recommendation engine.
+Sahil, you own two things. The first is **what a profile does**: watch progress, History, My List, ratings, and the state of a title page. The second is **what Home shows because of it**: a simple genre-taste recommendation engine.
 
 Read [README.md](README.md) first (architecture, setup, conventions, curl testing). This file is the complete spec for `activity.service` and the overview of `recommendations.service`; the recommendations build guide is [`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md). The schema is in [`../schema/SCHEMA.md`](../schema/SCHEMA.md) (see "Viewing activity", "Recommendations" and "Ranking").
 
-The Neon database already has the migration (`drizzle/0000_schema.sql`) and the seeded data. There are no views: every query reads the base tables directly. So you can run every query below against real rows right away.
+The Neon database already has the migrations (`drizzle/0000_schema.sql` for the tables, `drizzle/0001_genre_taste_view.sql` for the `genre_taste` view) and the seeded data. The one view, `genre_taste`, gives you each profile's genre taste scores; every other query reads the base tables directly. So you can run every query below against real rows right away.
 
 ## Table of contents
 
@@ -12,7 +12,7 @@ The Neon database already has the migration (`drizzle/0000_schema.sql`) and the 
 2. [Dependencies on A, and what to stub](#2-dependencies-on-a-and-what-to-stub)
 3. [Ordered checklist](#3-ordered-checklist)
 4. [`activity.service.ts`](#4-activityservicets)
-5. [`recommendations.service.ts`: the two-layer engine](#5-recommendationsservicets-the-two-layer-engine)
+5. [`recommendations.service.ts`: the genre-taste engine](#5-recommendationsservicets-the-genre-taste-engine)
 6. [Deep dive: the `rec_status` feedback loop](#6-deep-dive-the-rec_status-feedback-loop)
 7. [Testing with the seeded data](#7-testing-with-the-seeded-data)
 8. [Implementation notes and pitfalls](#8-implementation-notes-and-pitfalls)
@@ -49,7 +49,7 @@ All of these use `requireOwnedProfile` (the guard that checks the profile belong
 ### Tables
 
 - **You own (you write them):** `watch_history`, `my_list`, `rating`, `recommendation`.
-- **You only read:** `profile_genre_preference`, `profile`, `content`, `content_genre`, `genre`, `season`, `episode`.
+- **You only read:** `profile_genre_preference`, `profile`, `content`, `content_genre`, `genre`, `season`, `episode`, and the `genre_taste` view.
 - **Onboarding is not yours.** `PUT .../onboarding` belongs to Tejasva (A). You only read what it stores: `profile_genre_preference` and `profile.onboarded_at`.
 
 ### Two rules to remember
@@ -75,8 +75,8 @@ Some of your work needs things Tejasva (A) is still building. For each one, this
 
 Who depends on you:
 
-- Tejasva's (A) `getSimilarTitles` no longer depends on you: it self-joins `content_genre` and uses recent `watch_history` for tie-breaks.
-- The dashboard's `mostWatched` and the trending ranking read the `watch_history` rows you write.
+- Tejasva's (A) `getSimilarTitles` no longer depends on you: it self-joins `content_genre` and breaks ties on release date.
+- The dashboard's `mostWatched` and the search popularity ranking read the `watch_history` rows you write.
 
 ---
 
@@ -90,8 +90,8 @@ Work through these in order. Each step builds on the one before.
 - [ ] **3. History**: `listHistory`, `removeHistoryEntry`. History page; second delete -> 404.
 - [ ] **4. Progress**: `recordProgress` (validation, upsert, feedback loop in one transaction). Player in the UI; movie and series; wrong episode -> 422; 95% twice -> one row.
 - [ ] **5. Title activity**: `getTitleActivity`, `getResumePoint`, `getNextEpisode`. Title page labels "Resume · 62%", "Resume S1:E3", "Play S1:E4"; finale completed -> null.
-- [ ] **6. Genre taste**: `getGenreTaste` + `getSignalFlags` (CTEs over `watch_history`, `rating`, `my_list`, `profile_genre_preference`); compare with section 7.1.
-- [ ] **7. Home queries**: `getTopPicks`, `getContinueWatching`, `getAnchor` + `getSimilarByGenre`, `getTrending`, `getGenreTitles`, all as in the plan.
+- [ ] **6. Genre taste**: `getGenreTaste` + `getSignalFlags` (read the `genre_taste` view with `WHERE profile_id = $1`; the CTEs inside it read `watch_history`, `rating`, `my_list`, `profile_genre_preference`); compare with section 7.1.
+- [ ] **7. Home queries**: `getTopPicks`, `getContinueWatching`, `getGenreTitles` (the top-picks query filtered to one genre), all as in the plan.
 - [ ] **8. `getHomeFeed`**: wire the rows together (dedupe, reasons, hero, match %), computed on every request.
 - [ ] **9. `storeTopPicks`**: write the top picks to `recommendation`; never let a failure break the page.
 - [ ] **10. Check** the three demo profiles' Home pages, cold start (profile 3, a brand new profile).
@@ -351,7 +351,7 @@ DELETE FROM my_list WHERE profile_id = $1 AND content_id = $2;
 
 ### 4.7 `rateTitle(profileId: number, contentId: number, value: number): Promise<Rating>`
 
-**What it does:** Rates a title 1-5 stars; re-rating replaces the old value. The rating feeds the home signals as `(value - 3) x 2`.
+**What it does:** Rates a title 1-5 stars; re-rating replaces the old value. The rating feeds the home signals as `(value - 3) / 2` (5 stars +1 down to 1 star -1).
 
 **Steps:**
 
@@ -573,27 +573,28 @@ SELECT e.*
 
 ---
 
-## 5. `recommendations.service.ts`: the two-layer engine
+## 5. `recommendations.service.ts`: the genre-taste engine
 
 This service builds the Home page. The build guide, with every query run against the seeded data and its expected result, is [`plans/activity-recommendations/plan.md`](../../plans/activity-recommendations/plan.md). Follow that plan for the code. This section only states the idea.
 
-**Layer 1: personal genre taste.** One SQL query built from CTEs (named sub-queries) reads the base tables directly. There are no views.
+**Genre taste.** It is read from the `genre_taste` view (`drizzle/0001_genre_taste_view.sql`): `SELECT genre_id, taste_score FROM genre_taste WHERE profile_id = $1`. The view covers all profiles, so always filter by `profile_id` (Postgres pushes that filter into the view, so it stays fast). Inside the view, each signal is scored on a 0-1 scale and the four are summed per genre into `taste_score`:
 
-- **Watched:** `watch_history` collapsed to one row per title with `MAX(progress_percent) ... GROUP BY content_id` (a series has one row per episode). Under 30% scores 0, 30-69% scores 1, 70% or more scores 2.
-- **Rating:** `value - 3` (5 stars +2 down to 1 star -2).
-- **My List:** +1.
-- **Onboarding picks:** +2 straight to each picked genre in `profile_genre_preference`.
-- Each title's points are copied to all of its genres and summed per genre. A title's score is the **average** of its genres' taste (an average, so titles with many genres do not win by default).
+- **Watched:** `watch_history` collapsed to one row per title with `MAX(progress_percent) ... GROUP BY content_id` (a series has one row per episode). Under 10% scores 0, under 30% scores 0.25, under 50% scores 0.5, under 80% scores 0.75, otherwise 1.
+- **Rating:** `(value - 3) / 2` (5 stars +1, 4 stars +0.5, 3 stars 0, 2 stars -0.5, 1 star -1).
+- **My List:** +0.5.
+- **Onboarding picks:** +1 straight to each picked genre in `profile_genre_preference`.
+- Each title's points are copied to all of its genres and summed per genre. The view returns only genres with `taste_score > 0`, and its `watch_score`, `rating_score`, `my_list_score` and `pick_score` columns show where the total came from.
+- A title's score is the **sum** of its genres' `taste_score` divided by **√(number of genres)**: a plain sum lets 5-6-genre series win on genre count, and a plain average ties every single-genre title with multi-genre ones. Ties break on `release_date DESC` (newest first).
 - It drives the top picks, the hero (the first top pick), the two genre rows and the match %.
 
-**Layer 2: trending.** `COUNT(DISTINCT profile_id)` in `watch_history` over the last 7 days. It is the "Trending now" row and the tie-break for every ranked row (then `release_date DESC`).
+**Not ranked, just shown:** continue-watching (the latest history row per title at 1-89%).
 
-**Not ranked, just shown:** continue-watching (the latest history row per title at 1-89%) and "Because you liked X" (titles sharing the most genres with the profile's most recently liked title).
+**Genre rows** reuse the top-picks query: the profile's top 2 genres from `genre_taste`, and for each, the same score query with `AND EXISTS (SELECT 1 FROM content_genre WHERE content_id = c.content_id AND genre_id = $genre)`. So a genre row is ranked by the profile's taste (not just newest first), and a title already shown in an earlier row is skipped.
 
 **Other rules**
 
 - Home is computed on every request. There is no cache, no refresh policy and no reading back from `recommendation`.
-- Cold start needs no special code: with only onboarding picks, only the picked genres have weight; with nothing at all every score is 0 and the order falls back to trending.
+- Cold start needs no special code: onboarding makes every profile pick at least 3 genres before it reaches Home (`ONBOARDING_MIN_GENRES = 3`; the profile picker sends un-onboarded profiles to `/onboarding`), so a new profile already has a genre taste and no popularity fallback is needed. A profile with nothing at all (only possible in seed data) gets every score 0, ordered newest first.
 - The top picks are also written to `recommendation` (`storeTopPicks`, one transaction, never failing the page), so `recordProgress` can move `rec_status` and the table is used.
 - The service exports `ROW_SIZE` and `getHomeFeed`. The helpers and the row catalogue are in the plan.
 
@@ -625,15 +626,14 @@ The seed gives three demo profiles, so you can check each query against known nu
 
 ### 7.1 Expected values
 
-The numbers below come from the plan (run against the seed):
+The numbers below come from the plan, run against the seed with the `genre_taste` view:
 
-- **Genre taste, Riya (profile 1):** Drama 16, Science Fiction 15, Adventure 7, Crime 7, Mystery 6, Action 6, Thriller 5, Fantasy 3, Comedy 1, History 1.
-- **Top picks, Riya:** Drama-only titles tie at 16 (The Last of Us, Bridgerton, The Queen's Gambit, Euphoria, ...).
-- **Top picks, Kabir (profile 2, TEEN):** Raiders of the Lost Ark 10.5, then Avatar: The Way of Water, Spider-Man: No Way Home, Avengers: Endgame, ... at 9.
-- **Top picks, Mini (profile 3, KIDS):** only G/PG/TV-Y/TV-Y7/TV-G/TV-PG titles. Inside Out must not appear, because it is on her My List.
+- **Genre taste, Riya (profile 1):** Drama 8, Science Fiction 7.75, Adventure 3.75, Crime 3.5, Action 3, Mystery 3, Thriller 2.5, Fantasy 1.5, Comedy 0.5, History 0.5.
+- **Genre taste, Kabir (2) / Mini (3):** Kabir Action 6, Adventure 4.5, Animation 3.5; Mini Animation 1, Family 1 (My List only).
+- **Top picks, Riya:** The Martian 11.26, The 100 11.23, Ex Machina 11.14, then Logan / Arrival / The Prestige 10.83.
+- **Top picks, Kabir (profile 2, TEEN):** What If...?, Super Dragon Ball Heroes, My Hero Academia, Dragon Ball Super, ... at 8.94.
+- **Top picks, Mini (profile 3, KIDS):** Shrek 1.57, then Moana, Zootopia, Frozen, Wreck-It Ralph at 1.5; only KIDS titles. Inside Out must not appear, because it is on her My List.
 - **Continue watching, Riya:** Breaking Bad S1:E3 41%, Dune 62%, Parasite 6%, Stranger Things S1:E2 23%.
-- **Anchor, Riya:** Breaking Bad (311). Mini and a new profile have none, so that row is skipped.
-- **Trending:** Arcane, Dune, Interstellar, Breaking Bad (1 viewer each this week), then the newest releases.
 - **Signal flags:** Riya has signals and picks; Mini has signals but no picks (her My List counts as a signal).
 
 ### 7.2 curl checks
@@ -647,17 +647,17 @@ curl -b jar $BASE/api/profiles/3/home | jq '[.rows[].items[].content.maturityLev
 
 Check, per profile:
 
-- Riya's rows come in order: continue-watching, top-picks, because-you-liked-311, trending, then 2 genre rows. The hero is a Drama title.
-- No title appears in two of top-picks / because-you-liked / genre rows.
-- No row except continue-watching and trending contains a title the profile watched, rated or saved.
+- Riya's rows come in order: continue-watching, top-picks, then 2 genre rows. The hero is a Drama title.
+- No title appears in two of top-picks / genre rows.
+- No row except continue-watching contains a title the profile watched, rated or saved.
 - Mini (KIDS) never sees PG-13+ items, and her top-picks reason is the "based on what you watch" wording.
-- Rows have `reason`, and `because-you-liked` rows carry `anchor`.
+- Every row has a `reason`.
 - Rating a title then reloading Home changes the genre rows straight away (no cache).
 
 Also:
 
 - Create a brand-new profile (`POST /api/profiles`, Tejasva) and complete onboarding with 3 genres. Top picks must come only from those genres, with the "picked genres" reason.
-- A brand-new profile with nothing: top picks follow the trending order and the hero says "Popular on Reelhouse".
+- A brand-new profile with nothing: every score is 0, so top picks are the newest allowed titles and the hero says "Picked for you". This is only reachable with seed data, since onboarding forces 3 genres.
 
 ### 7.3 SQL spot checks
 
@@ -678,7 +678,7 @@ These are the traps you are most likely to hit while building Home. The plan's s
 
 - `SUM`/`AVG` results and counts can arrive as strings (numeric): use `Number()`.
 - `watched_at`, `added_at`, `rated_at`, `generated_at` are ISO strings in the API (README 3.7).
-- Row ids: `because-you-liked-<contentId>` and `genre-picks-<genreId>`; the others are plain kind names.
+- Row ids: only `genre-picks-<genreId>` has a suffix; the others are plain kind names.
 - `HomeFeed.generatedAt` is an ISO string. `hero` is `null` only if the catalogue is empty or all filtered.
 
 ### 8.2 Performance guardrails
@@ -689,8 +689,8 @@ These are the traps you are most likely to hit while building Home. The plan's s
 
 ### 8.3 What not to do
 
-- Do not store reasons or anchors (no column exists, by design).
-- Do not sum a title's genre points: use the average, or titles with many genres win every time.
+- Do not store reasons (no column exists, by design).
+- Do not use a plain sum or a plain average of a title's genre points: divide the sum by √(number of genres), or titles with many genres win every time.
 - Do not trust the client for `profileId` (the route already ties it to the session).
 - Do not reintroduce a `completed` column or flag: use `progress_percent >= 90` / `isCompleted`.
 
@@ -702,7 +702,7 @@ Tick every box before you ask for review.
 
 - [ ] `activity.service.ts` and `recommendations.service.ts` import nothing from `@/server/mocks` (`grep -n "server/mocks" src/server/services/{activity,recommendations}.service.ts` is empty); `isCompleted`/`formatEpisodeCode` come from `@/lib/content/progress` and `@/lib/format`.
 - [ ] Every function matches its SQL, errors, transaction and idempotency notes above; typed errors only.
-- [ ] `getHomeFeed` runs the two-layer engine from the plan (genre taste, trending, continue-watching, because-you-liked, genre rows, cold start); `storeTopPicks` failures do not break the response.
+- [ ] `getHomeFeed` runs the genre-taste engine from the plan (top picks, continue-watching, the 2 genre rows, cold start via the onboarding picks); `storeTopPicks` failures do not break the response.
 - [ ] curl checks pass (README section 4 and 7.2 here): progress (movie, series, wrong episode 422, unknown title 404, idempotent); history list/delete (second delete 404); my-list add twice 201/201 and remove twice; ratings 1-5, 6 -> 422, delete twice; titles/:id resume labels incl. "Play S1:E4" and `null` after a finale; home for profiles 1, 2, 3 and a new profile; another user's profile -> 404.
 - [ ] UI works: Home (hero, rows, reasons, match chips, continue-watching progress), the player's progress sync, History, My List, rating control, title page Play/Resume label.
 - [ ] The header comments of `recommendations.service.ts` and the Home route describe the real algorithm.

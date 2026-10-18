@@ -4,7 +4,7 @@
  *
  * Request:  path profileId (ownership-checked, see ../route.ts)
  * Response: 200 HomeFeed { profileId, hero: { content, reason, match? } | null, rows: HomeRow[], generatedAt }
- *           HomeRow = { id, kind, title, reason, anchor?, items: { content, match?, progress? }[] }
+ *           HomeRow = { id, kind, title, reason, items: { content, match?, progress? }[] }
  *           401 signed out · 404 unknown profile
  *
  * Calls: requireOwnedProfile → getHomeFeed (recommendations.service; the pipeline is specified there)
