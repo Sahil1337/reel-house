@@ -2,6 +2,7 @@ import { Card, CardAction, CardDescription, CardHeader, CardPanel, CardTitle } f
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { SubscriptionWithPlan } from "@/types";
 
+import { CancelSubscriptionButton } from "./cancel-subscription-button";
 import { PlanFeatureList } from "./plan-features";
 import { SubscriptionStatusBadge } from "./status-badges";
 
@@ -38,6 +39,9 @@ export function CurrentPlanCard({ subscription }: { subscription: SubscriptionWi
           </p>
         </div>
         <PlanFeatureList plan={plan} />
+        <div className="flex justify-end">
+          <CancelSubscriptionButton subscriptionId={subscription.subscriptionId} label="Cancel plan" />
+        </div>
       </CardPanel>
     </Card>
   );

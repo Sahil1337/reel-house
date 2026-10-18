@@ -41,14 +41,101 @@
  */
 import "server-only";
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { and, eq, ne, sql } from "drizzle-orm";
+
+import { ServiceError } from "@/server/errors";
 import type {
   CheckoutOrder,
+  PaymentMode,
   RazorpayPayment,
+  RazorpayPaymentStatus,
   Subscription,
   SubscriptionPlan,
   VerifyPaymentInput,
   WebhookEvent,
 } from "@/types";
+import { db } from "../db";
+import { payment as paymentTable, subscription, subscriptionPlan } from "../db/schema/billing";
+
+const RAZORPAY_API = "https://api.razorpay.com/v1";
+
+const PAYMENT_MODES: Record<string, PaymentMode> = {
+  card: "CARD",
+  upi: "UPI",
+  netbanking: "NET_BANKING",
+  wallet: "WALLET",
+};
+
+/** Razorpay's payment entity, as the Payments API and the webhook send it (only the fields we use). */
+interface RazorpayPaymentEntity {
+  id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  status: RazorpayPaymentStatus;
+  method: string;
+  notes?: { subscription_id?: string | number } | unknown[];
+}
+
+function requireEnv(name: "RAZORPAY_KEY_ID" | "RAZORPAY_KEY_SECRET" | "RAZORPAY_WEBHOOK_SECRET"): string {
+  const value = process.env[name];
+  if (!value) throw new ServiceError("Payments aren't set up yet. Try again later.", 503, "PAYMENTS_NOT_CONFIGURED");
+  return value;
+}
+
+/** Calls the Razorpay REST API with HTTP basic auth (key_id:key_secret). */
+async function razorpayRequest<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  const auth = Buffer.from(`${requireEnv("RAZORPAY_KEY_ID")}:${requireEnv("RAZORPAY_KEY_SECRET")}`).toString("base64");
+  let response: Response;
+  try {
+    response = await fetch(`${RAZORPAY_API}${path}`, {
+      method: init.method ?? "GET",
+      headers: { authorization: `Basic ${auth}`, "content-type": "application/json" },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.error("[razorpay] request failed", path, error);
+    throw new ServiceError("Couldn't reach Razorpay. Try again.", 502, "RAZORPAY_UNAVAILABLE");
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("[razorpay]", path, response.status, data);
+    throw new ServiceError("Razorpay couldn't process the request. Try again.", 502, "RAZORPAY_ERROR");
+  }
+  return data as T;
+}
+
+/** HMAC-SHA256 hex of `message`, compared with `signature` in constant time. */
+function signatureMatches(secret: string, message: string, signature: string): boolean {
+  const expected = Buffer.from(createHmac("sha256", secret).update(message).digest("hex"));
+  const received = Buffer.from(signature);
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
+/** notes.subscription_id → number, or null when missing (Razorpay sends empty notes as []). */
+function noteSubscriptionId(notes: RazorpayPaymentEntity["notes"]): number | null {
+  const value = Array.isArray(notes) ? undefined : notes?.subscription_id;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** Maps a Razorpay payment entity to RazorpayPayment; null when the method or subscription id is unusable. */
+function toRazorpayPayment(entity: RazorpayPaymentEntity): RazorpayPayment | null {
+  const paymentMode = PAYMENT_MODES[entity.method];
+  const subscriptionId = noteSubscriptionId(entity.notes);
+  if (!paymentMode || subscriptionId === null) return null;
+  return {
+    paymentId: entity.id,
+    orderId: entity.order_id,
+    amount: entity.amount,
+    currency: entity.currency,
+    status: entity.status,
+    paymentMode,
+    subscriptionId,
+  };
+}
 
 /**
  * Creates the Razorpay order that a PENDING subscription is paid through.
@@ -70,18 +157,24 @@ import type {
  *   start_date, and the next checkout cancels it).
  * Throws: ServiceError 503 when the Razorpay keys are not set; ServiceError 502 when Razorpay fails.
  * Called by: POST /api/account/subscriptions
- * Mock today: no Razorpay call; returns orderId `order_MOCK<Date.now()>`, amount = round(priceMonthly × 100),
- *   currency "INR" and keyId null — which makes the client skip Checkout and go straight to the
- *   "payment received" state. Keep keyId null until the real call exists.
  */
 export async function createRazorpayOrder(subscription: Subscription, plan: SubscriptionPlan): Promise<CheckoutOrder> {
-  // TODO: implement
+  const keyId = requireEnv("RAZORPAY_KEY_ID");
+  const order = await razorpayRequest<{ id: string; amount: number; currency: string }>("/orders", {
+    method: "POST",
+    body: {
+      amount: Math.round(plan.priceMonthly * 100),
+      currency: "INR",
+      receipt: `sub_${subscription.subscriptionId}`,
+      notes: { subscription_id: subscription.subscriptionId },
+    },
+  });
   return {
     subscriptionId: subscription.subscriptionId,
-    orderId: `order_MOCK${Date.now()}`,
-    amount: Math.round(plan.priceMonthly * 100),
-    currency: "INR",
-    keyId: null,
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency,
+    keyId,
   };
 }
 
@@ -102,11 +195,13 @@ export async function createRazorpayOrder(subscription: Subscription, plan: Subs
  * Throws: ServiceError(400, "INVALID_SIGNATURE") when the signature doesn't match; ServiceError 503 when
  *   RAZORPAY_KEY_SECRET isn't set.
  * Called by: POST /api/payments/verify
- * Mock today: accepts everything (no check).
  */
 export async function verifyPaymentSignature(input: VerifyPaymentInput): Promise<void> {
-  // TODO: implement
-  void input;
+  const secret = requireEnv("RAZORPAY_KEY_SECRET");
+  const message = `${input.razorpay_order_id}|${input.razorpay_payment_id}`;
+  if (!signatureMatches(secret, message, input.razorpay_signature)) {
+    throw new ServiceError("The payment signature didn't match.", 400, "INVALID_SIGNATURE");
+  }
 }
 
 /**
@@ -127,20 +222,17 @@ export async function verifyPaymentSignature(input: VerifyPaymentInput): Promise
  * Throws: ServiceError 502 when Razorpay fails; ServiceError 400 on an order mismatch; ServiceError 503 when
  *   the keys aren't set.
  * Called by: POST /api/payments/verify
- * Mock today: no Razorpay call; returns a plausible captured card payment of 49900 paise INR for
- *   subscription 1 (orderId = expectedOrderId when given).
  */
 export async function fetchPayment(paymentId: string, expectedOrderId?: string): Promise<RazorpayPayment> {
-  // TODO: implement
-  return {
-    paymentId,
-    orderId: expectedOrderId ?? "order_MOCK",
-    amount: 49900,
-    currency: "INR",
-    status: "captured",
-    paymentMode: "CARD",
-    subscriptionId: 1,
-  };
+  const entity = await razorpayRequest<RazorpayPaymentEntity>(`/payments/${encodeURIComponent(paymentId)}`);
+  if (expectedOrderId !== undefined && entity.order_id !== expectedOrderId) {
+    throw new ServiceError("The payment doesn't belong to this order.", 400, "ORDER_MISMATCH");
+  }
+  const payment = toRazorpayPayment(entity);
+  if (!payment) {
+    throw new ServiceError("This payment method isn't supported.", 422, "UNSUPPORTED_PAYMENT");
+  }
+  return payment;
 }
 
 /**
@@ -159,12 +251,12 @@ export async function fetchPayment(paymentId: string, expectedOrderId?: string):
  * Throws: ServiceError(400, "INVALID_SIGNATURE") on a missing or wrong signature; ServiceError 503 when
  *   RAZORPAY_WEBHOOK_SECRET isn't set.
  * Called by: POST /api/payments/webhook
- * Mock today: accepts everything (no check).
  */
 export async function verifyWebhookSignature(rawBody: string, signature: string | null): Promise<void> {
-  // TODO: implement
-  void rawBody;
-  void signature;
+  const secret = requireEnv("RAZORPAY_WEBHOOK_SECRET");
+  if (!signature || !signatureMatches(secret, rawBody, signature)) {
+    throw new ServiceError("Invalid webhook signature.", 400, "INVALID_SIGNATURE");
+  }
 }
 
 /**
@@ -188,12 +280,31 @@ export async function verifyWebhookSignature(rawBody: string, signature: string 
  * Transaction: no  ·  Idempotent: yes (pure)
  * Throws: ServiceError(400, "MALFORMED_WEBHOOK") for a body that isn't the expected JSON.
  * Called by: POST /api/payments/webhook
- * Mock today: ignores the body and returns { type: "ignored", event: "mock" }, so the route answers 200 {}.
  */
 export async function parseWebhookEvent(rawBody: string): Promise<WebhookEvent> {
-  // TODO: implement
-  void rawBody;
-  return { type: "ignored", event: "mock" };
+  let body: { event?: unknown; payload?: { payment?: { entity?: RazorpayPaymentEntity } } };
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    throw new ServiceError("Malformed webhook body.", 400, "MALFORMED_WEBHOOK");
+  }
+  if (typeof body?.event !== "string") {
+    throw new ServiceError("Malformed webhook body.", 400, "MALFORMED_WEBHOOK");
+  }
+
+  const event = body.event;
+  if (event !== "payment.captured" && event !== "payment.failed") return { type: "ignored", event };
+
+  const entity = body.payload?.payment?.entity;
+  if (!entity?.id || !entity.order_id) {
+    throw new ServiceError("Malformed webhook body.", 400, "MALFORMED_WEBHOOK");
+  }
+  const payment = toRazorpayPayment(entity);
+  if (!payment) {
+    console.warn("[razorpay webhook] ignored", event, entity.id, "method:", entity.method, "notes:", entity.notes);
+    return { type: "ignored", event };
+  }
+  return { type: event, payment };
 }
 
 /**
@@ -213,11 +324,29 @@ export async function parseWebhookEvent(rawBody: string): Promise<WebhookEvent> 
  *   successful retry on the same order — different pay_ id, same gateway_order_id); never touches subscription.
  * Throws: nothing for a duplicate; any other failure propagates (route answers 500 → Razorpay retries, safe).
  * Called by: POST /api/payments/webhook (payment.failed)
- * Mock today: writes nothing.
  */
 export async function recordFailedPayment(payment: RazorpayPayment): Promise<void> {
-  // TODO: implement
-  void payment;
+  const [existing] = await db
+    .select({ subscriptionId: subscription.subscriptionId })
+    .from(subscription)
+    .where(eq(subscription.subscriptionId, payment.subscriptionId))
+    .limit(1);
+  if (!existing) {
+    console.warn("[razorpay] failed payment for unknown subscription", payment.subscriptionId, payment.paymentId);
+    return;
+  }
+
+  await db
+    .insert(paymentTable)
+    .values({
+      subscriptionId: payment.subscriptionId,
+      amount: String(payment.amount / 100),
+      paymentMode: payment.paymentMode,
+      transactionRef: payment.paymentId,
+      gatewayOrderId: payment.orderId,
+      status: "FAILED",
+    })
+    .onConflictDoNothing({ target: paymentTable.transactionRef });
 }
 
 /**
@@ -264,13 +393,86 @@ export async function recordFailedPayment(payment: RazorpayPayment): Promise<voi
  *   activated.
  * Throws: any database failure propagates (route answers 500; the webhook is retried by Razorpay, which is safe).
  * Called by: POST /api/payments/verify (with options.expectedUserId), POST /api/payments/webhook (payment.captured)
- * Mock today: writes nothing.
  */
 export async function recordCapturedPayment(
   payment: RazorpayPayment,
   options: { expectedUserId?: number } = {},
 ): Promise<void> {
-  // TODO: implement
-  void payment;
-  void options;
+  await db.transaction(async (tx) => {
+    // 1. Lock the subscription so verify and the webhook for it run one after the other.
+    const [locked] = await tx
+      .select({
+        subscriptionId: subscription.subscriptionId,
+        userId: subscription.userId,
+        status: subscription.status,
+        priceMonthly: subscriptionPlan.priceMonthly,
+      })
+      .from(subscription)
+      .innerJoin(subscriptionPlan, eq(subscription.planId, subscriptionPlan.planId))
+      .where(eq(subscription.subscriptionId, payment.subscriptionId))
+      .for("update", { of: subscription });
+
+    if (!locked) {
+      console.warn("[razorpay] captured payment for unknown subscription", payment.subscriptionId, payment.paymentId);
+      return;
+    }
+
+    // 2. Ownership (verify only): leave anything suspicious to the webhook.
+    if (options.expectedUserId !== undefined && locked.userId !== options.expectedUserId) {
+      console.warn("[razorpay] verify by user", options.expectedUserId, "for subscription of user", locked.userId);
+      return;
+    }
+
+    // 3. Record the payment; nothing inserted = this capture was already processed.
+    const [inserted] = await tx
+      .insert(paymentTable)
+      .values({
+        subscriptionId: locked.subscriptionId,
+        amount: String(payment.amount / 100),
+        paymentMode: payment.paymentMode,
+        transactionRef: payment.paymentId,
+        gatewayOrderId: payment.orderId,
+        status: "SUCCESS",
+      })
+      .onConflictDoNothing({ target: paymentTable.transactionRef })
+      .returning({ paymentId: paymentTable.paymentId });
+    if (!inserted) return;
+
+    // 4. Amount check: keep the payment row, but don't activate on a mismatch.
+    if (payment.currency !== "INR" || payment.amount !== Math.round(Number(locked.priceMonthly) * 100)) {
+      console.error("[razorpay] amount mismatch — refund manually", {
+        paymentId: payment.paymentId,
+        subscriptionId: locked.subscriptionId,
+        paid: `${payment.amount} ${payment.currency}`,
+        price: locked.priceMonthly,
+      });
+      return;
+    }
+
+    // 5. Activate (PENDING, or an abandoned CANCELLED checkout — the money was taken) or extend (renewal).
+    if (locked.status === "PENDING" || locked.status === "CANCELLED") {
+      // The old ACTIVE plan ends first: only one ACTIVE row per user is allowed.
+      await tx
+        .update(subscription)
+        .set({ status: "CANCELLED", endDate: sql`LEAST(${subscription.endDate}, now())` })
+        .where(
+          and(
+            eq(subscription.userId, locked.userId),
+            eq(subscription.status, "ACTIVE"),
+            ne(subscription.subscriptionId, locked.subscriptionId),
+          ),
+        );
+      await tx
+        .update(subscription)
+        .set({ status: "ACTIVE", startDate: sql`now()`, endDate: sql`now() + interval '1 month'` })
+        .where(eq(subscription.subscriptionId, locked.subscriptionId));
+    } else if (locked.status === "ACTIVE") {
+      await tx
+        .update(subscription)
+        .set({ endDate: sql`GREATEST(${subscription.endDate}, now()) + interval '1 month'` })
+        .where(eq(subscription.subscriptionId, locked.subscriptionId));
+    } else {
+      console.warn("[razorpay] captured payment for", locked.status, "subscription", locked.subscriptionId);
+    }
+  });
 }
