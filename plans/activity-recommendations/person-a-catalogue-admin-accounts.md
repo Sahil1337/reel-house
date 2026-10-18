@@ -38,20 +38,20 @@ Every implementation in this plan must adhere strictly to the established system
 ## 2. Phase-by-Phase Roadmap
 
 ```
-Phase 1: Accounts, Profiles & Guards  (Unblocks Person B & Person C)
-  ├── 1.1 users.service.ts           (findUserById, findUserCredentialsByEmail)
-  ├── 1.2 profiles.service.ts        (listProfiles, getOwnedProfile)
-  ├── 1.3 Swap Auth Guards           (src/app/api/_lib/auth.ts -> real DB queries)
-  ├── 1.4 Sign-up Flow               (createUser transaction + session start)
-  ├── 1.5 Profile CRUD & Limits      (createProfile, updateProfile, deleteProfile)
-  └── 1.6 Onboarding Genre Picks     (getGenrePreferences, saveGenrePreferences)
+Phase 1: Accounts, Profiles & Guards [COMPLETED]
+  ├── 1.1 users.service.ts           (findUserById, findUserCredentialsByEmail) [DONE]
+  ├── 1.2 profiles.service.ts        (listProfiles, getOwnedProfile) [DONE]
+  ├── 1.3 Swap Auth Guards           (src/app/api/_lib/auth.ts -> real DB queries) [DONE]
+  ├── 1.4 Sign-up Flow               (createUser transaction + session start) [DONE]
+  ├── 1.5 Profile CRUD & Limits      (createProfile, updateProfile, deleteProfile) [DONE]
+  └── 1.6 Onboarding Genre Picks     (getGenrePreferences, saveGenrePreferences) [DONE]
            │
            ▼
-Phase 2: Content Catalogue Reads
-  ├── 2.1 listGenres                 (Simplest catalogue query)
-  ├── 2.2 getContentDetail           (Content metadata, genres, cast, crew, seasons, episodes)
-  ├── 2.3 searchContent              (Maturity filter, unaccent ILIKE search, ranking)
-  └── 2.4 getSimilarTitles           (Shared-genre self-join with recent watch tie-break)
+Phase 2: Content Catalogue Reads [COMPLETED]
+  ├── 2.1 listGenres                 (Simplest catalogue query) [DONE]
+  ├── 2.2 getContentDetail           (Content metadata, genres, cast, crew, seasons, episodes) [DONE]
+  ├── 2.3 searchContent              (Maturity filter, unaccent ILIKE search, ranking) [DONE]
+  └── 2.4 getSimilarTitles           (Shared-genre self-join with recent watch tie-break) [DONE]
            │
            ▼
 Phase 3: Admin Dashboard & Live Ingestion
