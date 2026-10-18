@@ -18,108 +18,122 @@
 import "server-only";
 
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
-import { getMockDb } from "@/server/mocks/db";
 import { ADMIN_PAGE_SIZE } from "@/lib/validation/admin";
+import { escapeLike } from "@/lib/sql/admin-content";
+import { pool } from "@/server/db";
 import type {
   AdminContentFilters,
   AdminContentRow,
   AdminPage,
   ContentDeletionImpact,
-  ContentDetail,
+  ContentType,
+  Genre,
   UpdateContentInput,
 } from "@/types";
 
-/** The list row for a mock title: genres, and for series the season and episode counts (null for movies). */
-function toAdminRow(content: ContentDetail): AdminContentRow {
-  const isSeries = content.contentType === "SERIES";
+type RawAdminContentRow = {
+  content_id: number;
+  title: string;
+  content_type: ContentType;
+  release_date: string | null;
+  age_rating: string | null;
+  poster_url: string | null;
+  genres: Genre[] | string;
+  season_count: number | null;
+  episode_count: number | null;
+};
+
+type RawImpactRow = {
+  content_id: number;
+  title: string;
+  content_type: ContentType;
+  content_genre: number;
+  content_credit: number;
+  season: number;
+  episode: number;
+  watch_history: number;
+  my_list: number;
+  rating: number;
+  recommendation: number;
+};
+
+function mapToAdminRow(row: RawAdminContentRow): AdminContentRow {
   return {
-    contentId: content.contentId,
-    title: content.title,
-    contentType: content.contentType,
-    releaseDate: content.releaseDate,
-    ageRating: content.ageRating,
-    posterUrl: content.posterUrl,
-    genres: content.genres,
-    seasonCount: isSeries ? content.seasons.length : null,
-    episodeCount: isSeries ? content.seasons.reduce((sum, season) => sum + season.episodes.length, 0) : null,
+    contentId: row.content_id,
+    title: row.title,
+    contentType: row.content_type,
+    releaseDate: row.release_date,
+    ageRating: row.age_rating,
+    posterUrl: row.poster_url,
+    genres: typeof row.genres === "string" ? JSON.parse(row.genres) : (row.genres ?? []),
+    seasonCount: row.season_count !== null && row.season_count !== undefined ? Number(row.season_count) : null,
+    episodeCount: row.episode_count !== null && row.episode_count !== undefined ? Number(row.episode_count) : null,
   };
 }
 
 /**
  * One page of the catalogue for the admin content table, with each title's genres and, for series, its
  * season and episode counts. Ordered alphabetically by title (then content_id), not by recency.
- *
- * Steps:
- *   1. Normalise the filters: q trimmed (empty = no filter) with LIKE wildcards escaped so a search for
- *      "100%" or "a_b" matches those characters literally (replace \ % _ with a backslash-prefixed copy,
- *      then bind '%'||q||'%' as one param); page >= 1 (default 1); pageSize 1..100 (default 20,
- *      ADMIN_PAGE_SIZE); offset = (page - 1) * pageSize.
- *   2. Run the COUNT(*) with the same WHERE for `total`, and the page query below. Independent, so run them
- *      in parallel (Promise.all) or on one connection; a page that is a row off against the total
- *      under concurrent writes is harmless (read-only, no transaction needed).
- *   3. pageCount = max(1, ceil(total / pageSize)). If page > pageCount, answer with the LAST page (re-run
- *      the page query with the clamped offset) instead of an empty one, and report the page you returned.
- *   4. Map snake_case columns to AdminContentRow (release_date already arrives as 'YYYY-MM-DD' text via
- *      the pg DATE parser); genres arrives as parsed JSON.
- * SQL (the WHERE terms are added only for the filters that were sent; $n numbering follows):
- *   SELECT
- *     c.content_id, c.title, c.content_type, c.release_date, c.age_rating, c.poster_url,
- *     COALESCE((SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
- *               FROM content_genre AS cg JOIN genre AS g ON g.genre_id = cg.genre_id
- *               WHERE cg.content_id = c.content_id), '[]') AS genres,
- *     CASE WHEN c.content_type = 'SERIES'
- *          THEN (SELECT COUNT(*) FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
- *     CASE WHEN c.content_type = 'SERIES'
- *          THEN (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
- *                WHERE s.content_id = c.content_id) END AS episode_count
- *   FROM content AS c
- *   WHERE c.title ILIKE $1 ESCAPE '\'                                          -- q  ($1 = '%' || escaped q || '%')
- *     AND c.content_type = $2                                                  -- type
- *     AND EXISTS (SELECT 1 FROM content_genre AS cg
- *                 WHERE cg.content_id = c.content_id AND cg.genre_id = $3)     -- genre
- *   ORDER BY c.title, c.content_id
- *   LIMIT $4 OFFSET $5;
- *   SELECT COUNT(*) AS total FROM content AS c WHERE <same filters>;
- *   -- The subqueries run only for the <= pageSize rows that survive LIMIT; aggregating with LEFT JOIN +
- *   -- GROUP BY would multiply rows (genres x seasons x episodes) before COUNT DISTINCT can fix it.
- * Tables: content, content_genre, genre, season, episode  ·  Keys/constraints relied on: content_genre
- *   PK (content_id, genre_id) (genres of a title), season UNIQUE (content_id, season_number) (seasons of a
- *   title), episode UNIQUE (season_id, episode_number) (episodes of a season), content_genre_genre_idx
- *   (titles of a genre). Index that keeps it fast as the catalogue grows: a trigram index for the substring
- *   search, CREATE EXTENSION pg_trgm; CREATE INDEX content_title_trgm_idx ON content USING gin (title gin_trgm_ops);
- *   without it the ILIKE is a sequential scan (fine below a few thousand titles). ORDER BY title uses the
- *   UNIQUE (title, content_type, release_date) index's leading column.
- * Transaction: no  ·  Idempotent: yes (read-only)
- * Edge cases: no matches gives { items: [], total: 0, page: 1, pageSize, pageCount: 1 }; a title with no
- *   genres has genres [] (the COALESCE); a movie has null season and episode counts, a series with no
- *   seasons has 0 and 0; q made only of wildcards ("%", "_") matches those literal characters; the same
- *   title in two years appears twice, ordered by content_id.
- * Throws: nothing (the route's parseWith has already rejected a bad type, genre, page or pageSize with 422).
- * Called by: GET /api/admin/content
- * Mock today: filters getMockDb().contents in memory (case-insensitive substring on title, type, genre id),
- *   sorts by title then contentId, clamps the page into 1..pageCount and slices; pageCount is at least 1.
  */
 export async function listContentForAdmin(filters: AdminContentFilters): Promise<AdminPage<AdminContentRow>> {
-  // TODO: implement
-  const { contents } = getMockDb();
-  const query = filters.q?.trim().toLowerCase();
+  const q = filters.q?.trim();
   const pageSize = filters.pageSize ?? ADMIN_PAGE_SIZE;
+  const rawPage = Math.max(1, filters.page ?? 1);
 
-  const matches = contents
-    .filter(
-      (content) =>
-        (!query || content.title.toLowerCase().includes(query)) &&
-        (!filters.type || content.contentType === filters.type) &&
-        (!filters.genre || content.genres.some((genre) => genre.genreId === filters.genre)),
-    )
-    .toSorted((a, b) => a.title.localeCompare(b.title) || a.contentId - b.contentId);
+  const terms: string[] = [];
+  const params: (string | number)[] = [];
 
-  const pageCount = Math.max(1, Math.ceil(matches.length / pageSize));
-  const page = Math.min(Math.max(1, filters.page ?? 1), pageCount);
+  if (q) {
+    params.push(`%${escapeLike(q)}%`);
+    terms.push(`c.title ILIKE $${params.length} ESCAPE '\\'`);
+  }
+  if (filters.type) {
+    params.push(filters.type);
+    terms.push(`c.content_type = $${params.length}`);
+  }
+  if (filters.genre) {
+    params.push(filters.genre);
+    terms.push(
+      `EXISTS (\n    SELECT 1 FROM content_genre AS cg\n    WHERE cg.content_id = c.content_id AND cg.genre_id = $${params.length}\n  )`,
+    );
+  }
+
+  const whereSql = terms.length ? `WHERE ${terms.join("\n  AND ")}` : "";
+
+  const countSql = `SELECT COUNT(*) AS total FROM content AS c${whereSql ? `\n${whereSql}` : ""};`;
+  const countRes = await pool.query<{ total: number }>(countSql, params);
+  const total = Number(countRes.rows[0]?.total ?? 0);
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(rawPage, pageCount);
+  const offset = (page - 1) * pageSize;
+
+  const limitPlaceholder = params.length + 1;
+  const offsetPlaceholder = params.length + 2;
+
+  const selectSql = `SELECT
+  c.content_id, c.title, c.content_type, c.release_date, c.age_rating, c.poster_url,
+  COALESCE((
+    SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
+    FROM content_genre AS cg
+    JOIN genre AS g ON g.genre_id = cg.genre_id
+    WHERE cg.content_id = c.content_id
+  ), '[]'::json) AS genres,
+  CASE WHEN c.content_type = 'SERIES'
+       THEN (SELECT COUNT(*) FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
+  CASE WHEN c.content_type = 'SERIES'
+       THEN (SELECT COUNT(*) FROM episode AS e
+             JOIN season AS s ON s.season_id = e.season_id
+             WHERE s.content_id = c.content_id) END AS episode_count
+FROM content AS c
+${whereSql ? `${whereSql}\n` : ""}ORDER BY c.title, c.content_id
+LIMIT $${limitPlaceholder} OFFSET $${offsetPlaceholder};`;
+
+  const itemsRes = await pool.query<RawAdminContentRow>(selectSql, [...params, pageSize, offset]);
 
   return {
-    items: matches.slice((page - 1) * pageSize, page * pageSize).map(toAdminRow),
-    total: matches.length,
+    items: itemsRes.rows.map(mapToAdminRow),
+    total,
     page,
     pageSize,
     pageCount,
@@ -127,171 +141,126 @@ export async function listContentForAdmin(filters: AdminContentFilters): Promise
 }
 
 /**
- * How many rows in each child table `DELETE FROM content WHERE content_id = $1` would remove through
+ * How many rows in each child table \`DELETE FROM content WHERE content_id = $1\` would remove through
  * ON DELETE CASCADE, so the admin sees the blast radius before confirming.
- *
- * Steps:
- *   1. One query: the title row with one scalar subquery per child table (a single round trip, one
- *      consistent statement snapshot).
- *   2. No row: NotFoundError. Otherwise map to { contentId, title, contentType, counts }, counts keyed by
- *      the child table name (content_genre, content_credit, season, episode, watch_history, my_list,
- *      rating, recommendation).
- * SQL:
- *   SELECT
- *     c.content_id, c.title, c.content_type,
- *     (SELECT COUNT(*) FROM content_genre   WHERE content_id = c.content_id) AS content_genre,
- *     (SELECT COUNT(*) FROM content_credit  WHERE content_id = c.content_id) AS content_credit,
- *     (SELECT COUNT(*) FROM season          WHERE content_id = c.content_id) AS season,
- *     (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
- *       WHERE s.content_id = c.content_id)                                     AS episode,
- *     (SELECT COUNT(*) FROM watch_history   WHERE content_id = c.content_id) AS watch_history,
- *     (SELECT COUNT(*) FROM my_list         WHERE content_id = c.content_id) AS my_list,
- *     (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating,
- *     (SELECT COUNT(*) FROM recommendation  WHERE content_id = c.content_id) AS recommendation
- *   FROM content AS c
- *   WHERE c.content_id = $1;
- * Tables: content, content_genre, content_credit, season, episode, watch_history, my_list, rating,
- *   recommendation  ·  Keys/constraints relied on: every child's FK to content is ON DELETE CASCADE
- *   (episode through season; watch_history carries content_id AND episode_id, so an episode's history is
- *   counted once, by content_id). Indexes: content_genre PK, content_credit PK, season UNIQUE and
- *   rating_content_idx serve the counts; watch_history, my_list and recommendation need a plain index on
- *   content_id (their keys lead with profile_id) — the same indexes make the cascading DELETE itself fast,
- *   because Postgres finds the child rows through the FK column: add
- *   CREATE INDEX watch_history_content_idx ON watch_history (content_id);
- *   CREATE INDEX my_list_content_idx ON my_list (content_id);
- *   CREATE INDEX recommendation_content_idx ON recommendation (content_id);
- * Transaction: no  ·  Idempotent: yes (read-only)
- * Edge cases: the counts are a preview; rows added between this call and the delete are removed too. A
- *   movie has season 0 and episode 0. Zero everywhere is valid (a title nobody has touched).
- * Throws: NotFoundError("Title not found.") when the id doesn't exist.
- * Called by: GET /api/admin/content/:contentId/impact
- * Mock today: counts the mock title's genres, cast plus directors, seasons and episodes, and the
- *   db.watchHistory / db.myList / db.ratings rows with its contentId. recommendation has no mock rows, so it
- *   returns a fixed pseudo-count, (contentId * 7) % 5, to show a plausible number.
  */
 export async function getContentDeletionImpact(contentId: number): Promise<ContentDeletionImpact> {
-  // TODO: implement
-  const db = getMockDb();
-  const content = db.contentById.get(contentId);
-  if (!content) throw new NotFoundError("Title not found.");
+  const sql = `SELECT
+    c.content_id, c.title, c.content_type,
+    (SELECT COUNT(*) FROM content_genre   WHERE content_id = c.content_id) AS content_genre,
+    (SELECT COUNT(*) FROM content_credit  WHERE content_id = c.content_id) AS content_credit,
+    (SELECT COUNT(*) FROM season          WHERE content_id = c.content_id) AS season,
+    (SELECT COUNT(*) FROM episode AS e JOIN season AS s ON s.season_id = e.season_id
+      WHERE s.content_id = c.content_id)                                     AS episode,
+    (SELECT COUNT(*) FROM watch_history   WHERE content_id = c.content_id) AS watch_history,
+    (SELECT COUNT(*) FROM my_list         WHERE content_id = c.content_id) AS my_list,
+    (SELECT COUNT(*) FROM rating          WHERE content_id = c.content_id) AS rating,
+    (SELECT COUNT(*) FROM recommendation  WHERE content_id = c.content_id) AS recommendation
+  FROM content AS c
+  WHERE c.content_id = $1;`;
+
+  const result = await pool.query<RawImpactRow>(sql, [contentId]);
+  const row = result.rows[0];
+  if (!row) {
+    throw new NotFoundError("Title not found.");
+  }
 
   return {
-    contentId,
-    title: content.title,
-    contentType: content.contentType,
+    contentId: row.content_id,
+    title: row.title,
+    contentType: row.content_type,
     counts: {
-      content_genre: content.genres.length,
-      content_credit: content.cast.length + content.directors.length,
-      season: content.seasons.length,
-      episode: content.seasons.reduce((sum, season) => sum + season.episodes.length, 0),
-      watch_history: db.watchHistory.filter((row) => row.contentId === contentId).length,
-      my_list: db.myList.filter((row) => row.contentId === contentId).length,
-      rating: db.ratings.filter((row) => row.contentId === contentId).length,
-      recommendation: (contentId * 7) % 5,
+      content_genre: Number(row.content_genre ?? 0),
+      content_credit: Number(row.content_credit ?? 0),
+      season: Number(row.season ?? 0),
+      episode: Number(row.episode ?? 0),
+      watch_history: Number(row.watch_history ?? 0),
+      my_list: Number(row.my_list ?? 0),
+      rating: Number(row.rating ?? 0),
+      recommendation: Number(row.recommendation ?? 0),
     },
   };
 }
 
 /**
  * Permanently removes one title and everything that hangs off it.
- *
- * Steps:
- *   1. Run the single DELETE below. One statement is atomic in Postgres: the content row and every
- *      cascaded child row go together or not at all, so no explicit transaction is needed.
- *   2. rowCount 0: NotFoundError. Otherwise return; the route answers 204 with no body.
- * SQL:
- *   DELETE FROM content WHERE content_id = $1;
- * Tables: content (and by cascade the tables below)  ·  Keys/constraints relied on: ON DELETE CASCADE from
- *   content_genre, content_credit, season (and episode through season_id), watch_history (by content_id and
- *   by episode_id), my_list, rating and recommendation. NOT deleted: person rows (a person credited only on
- *   this title stays as an orphan; nothing in the app lists people on their own) and genre rows
- *   (genres are shared lookups, a genre may end up with no titles).
- * Transaction: no (one statement)  ·  Idempotent: no, but safe to repeat: the second call finds nothing and
- *   answers 404, with nothing else changed.
- * Edge cases: a profile watching the title loses its watch_history row, my_list entry and rating, and
- *   its next page load of that title is a 404; deleting the title does NOT stop a later TMDB import from
- *   adding it back as a new row with a new content_id (nothing remembers it was deleted).
- * Throws: NotFoundError("Title not found.") when the id doesn't exist (or was just deleted).
- * Called by: DELETE /api/admin/content/:contentId (204)
- * Mock today: NotFoundError for an unknown id, otherwise a no-op (the mock database is read-only).
  */
 export async function deleteContent(contentId: number): Promise<void> {
-  // TODO: implement
-  if (!getMockDb().contentById.has(contentId)) throw new NotFoundError("Title not found.");
+  const result = await pool.query("DELETE FROM content WHERE content_id = $1;", [contentId]);
+  if ((result.rowCount ?? 0) === 0) {
+    throw new NotFoundError("Title not found.");
+  }
 }
 
+/** Editable column for each UpdateContentInput field, in the order the SET list is written. */
+const UPDATE_COLUMNS = [
+  ["title", "title"],
+  ["description", "description"],
+  ["releaseDate", "release_date"],
+  ["ageRating", "age_rating"],
+  ["posterUrl", "poster_url"],
+  ["backdropUrl", "backdrop_url"],
+] as const satisfies readonly (readonly [keyof UpdateContentInput, string])[];
+
 /**
- * Edits a title's details. Only the fields in `input` change; the rest keep their values.
- *
- * Editable: title, description, releaseDate, ageRating, posterUrl, backdropUrl. content_type is NOT
- * editable (turning a series into a movie would orphan its seasons and break the duration CHECK) and
- * duration_minutes is not exposed here.
- *
- * Steps:
- *   1. If `input` has no keys: ValidationError("Send at least one field to change.") (the route's schema
- *      already rejects it; keep the check so the SQL never has an empty SET).
- *   2. Build the SET list from a fixed allow-list map, never from request keys: title -> title,
- *      description -> description, releaseDate -> release_date, ageRating -> age_rating, posterUrl ->
- *      poster_url, backdropUrl -> backdrop_url. A key present with null (releaseDate, ageRating, posterUrl,
- *      backdropUrl) sets the column to NULL; an absent key (`undefined`) is left out. Bind every value.
- *   3. Run the UPDATE inside a CTE, then read the row back in the list shape (same projection as
- *      listContentForAdmin, so the table can swap the row in place without a refetch).
- *   4. No row: NotFoundError. Unique violation (pg code 23505, constraint on (title, content_type,
- *      release_date)): ConflictError. Map to AdminContentRow and return it; the route answers 200 { content }.
- * SQL (assignments only for the fields sent; $n numbering follows):
- *   WITH c AS (
- *     UPDATE content
- *     SET title = $1, description = $2, release_date = $3, age_rating = $4, poster_url = $5, backdrop_url = $6
- *     WHERE content_id = $7
- *     RETURNING content_id, title, content_type, release_date, age_rating, poster_url
- *   )
- *   SELECT c.*, <genres and season/episode count subqueries, as in listContentForAdmin> FROM c;
- * Tables: content, then (read-only) content_genre, genre, season, episode  ·  Keys/constraints relied on:
- *   content UNIQUE NULLS NOT DISTINCT (title, content_type, release_date) — renaming or re-dating a title to
- *   one that already exists raises 23505, mapped to ConflictError; description is NOT NULL DEFAULT '' so
- *   the API never sends null for it (a blank string is stored as ''); the age_rating CHECK (the 12 US
- *   certificate codes, or NULL) would raise 23514 on any other string, which the zod schema prevents (it
- *   enum-checks AGE_RATINGS), so a 23514 reaching here is a bug, not a user error: let it be a 500.
- * Transaction: no (one statement; the read-back is inside it)  ·  Idempotent: yes (setting the same values
- *   again changes nothing and returns the same row).
- * Edge cases: editing the natural key (title, release_date) detaches the row from TMDB matching: a later
- *   import of the ORIGINAL title finds no match and creates a second row, so tell the admin to re-import
- *   only if they want that; the imported seasons, credits and history stay attached (they key on content_id);
- *   changing age_rating changes the title's maturity_of() level immediately for every profile; two
- *   requests racing to the same new key: one wins, the other gets the 409; renaming to a different case
- *   ("dune" vs "Dune") is a different key (the UNIQUE is case-sensitive).
- * Throws: ValidationError (nothing to change), NotFoundError("Title not found."),
- *   ConflictError("A title with this name, type and release date already exists.", "CONTENT_EXISTS") (409).
- * Called by: PATCH /api/admin/content/:contentId
- * Mock today: merges `input` over the mock title and returns the list row; nothing is persisted. Throws the
- *   same ConflictError when another mock title already has the merged (title, type, release date).
+ * Edits a title's details. Only the fields in \`input\` change; the rest keep their values.
  */
 export async function updateContent(contentId: number, input: UpdateContentInput): Promise<AdminContentRow> {
-  // TODO: implement
-  const { contents } = getMockDb();
-  const content = contents.find((entry) => entry.contentId === contentId);
-  if (!content) throw new NotFoundError("Title not found.");
-  if (Object.values(input).every((value) => value === undefined)) {
+  const assignments: string[] = [];
+  const params: (string | number | null)[] = [];
+
+  for (const [field, column] of UPDATE_COLUMNS) {
+    const value = input[field];
+    if (value === undefined) continue;
+    params.push(value);
+    assignments.push(`${column} = $${params.length}`);
+  }
+
+  if (assignments.length === 0) {
     throw new ValidationError("Send at least one field to change.");
   }
 
-  const row = toAdminRow(content);
-  const merged: AdminContentRow = {
-    ...row,
-    title: input.title ?? row.title,
-    releaseDate: input.releaseDate !== undefined ? input.releaseDate : row.releaseDate,
-    ageRating: input.ageRating !== undefined ? input.ageRating : row.ageRating,
-    posterUrl: input.posterUrl !== undefined ? input.posterUrl : row.posterUrl,
-  };
+  params.push(contentId);
+  const idPlaceholder = `$${params.length}`;
 
-  const taken = contents.some(
-    (entry) =>
-      entry.contentId !== contentId &&
-      entry.title === merged.title &&
-      entry.contentType === merged.contentType &&
-      entry.releaseDate === merged.releaseDate,
-  );
-  if (taken) throw new ConflictError("A title with this name, type and release date already exists.", "CONTENT_EXISTS");
+  const sql = `WITH c AS (
+    UPDATE content
+    SET ${assignments.join(",\n        ")}
+    WHERE content_id = ${idPlaceholder}
+    RETURNING content_id, title, content_type, release_date, age_rating, poster_url
+  )
+  SELECT
+    c.content_id, c.title, c.content_type, c.release_date, c.age_rating, c.poster_url,
+    COALESCE((
+      SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name) ORDER BY g.name)
+      FROM content_genre AS cg
+      JOIN genre AS g ON g.genre_id = cg.genre_id
+      WHERE cg.content_id = c.content_id
+    ), '[]'::json) AS genres,
+    CASE WHEN c.content_type = 'SERIES'
+         THEN (SELECT COUNT(*) FROM season AS s WHERE s.content_id = c.content_id) END AS season_count,
+    CASE WHEN c.content_type = 'SERIES'
+         THEN (SELECT COUNT(*) FROM episode AS e
+               JOIN season AS s ON s.season_id = e.season_id
+               WHERE s.content_id = c.content_id) END AS episode_count
+  FROM c;`;
 
-  return merged;
+  try {
+    const result = await pool.query<RawAdminContentRow>(sql, params);
+    const row = result.rows[0];
+    if (!row) {
+      throw new NotFoundError("Title not found.");
+    }
+    return mapToAdminRow(row);
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code: unknown }).code === "23505"
+    ) {
+      throw new ConflictError("A title with this name, type and release date already exists.", "CONTENT_EXISTS");
+    }
+    throw error;
+  }
 }
