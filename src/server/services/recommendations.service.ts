@@ -10,11 +10,21 @@
  */
 import "server-only";
 
-import { alias } from "drizzle-orm/pg-core";
-import { and, between, desc, eq, exists, notExists, sql } from "drizzle-orm";
-import { content, contentGenre, db, genreTaste, myList, rating, watchHistory } from "@/server/db";
+import { and, between, count, desc, eq, max, not, sql } from "drizzle-orm";
+import { content, db, genre, genreTaste, myList, profileGenrePreference, rating, watchHistory } from "@/server/db";
 import { loadEpisodeData, loadContentData } from "@/server/db/queries/content";
-import type { GenreTaste, HomeFeed, HomeRow, MaturityLevel, Profile, RowItem, TopPick } from "@/types";
+import type {
+  GenreTaste,
+  HomeExplanation,
+  HomeFeed,
+  HomeRow,
+  MaturityLevel,
+  PickExplanation,
+  Profile,
+  RowItem,
+  TitleSignals,
+  TopPick,
+} from "@/types";
 
 /** Items per row. */
 export const ROW_SIZE = 18;
@@ -34,31 +44,6 @@ const REASONS = {
 /** Titles this maturity level may see. */
 function allowedFor(level: MaturityLevel) {
   return sql`maturity_of(${content.ageRating}) <= ${level}::maturity_level`;
-}
-
-/** The profile never watched, rated or saved the title. */
-function unseenBy(profileId: number) {
-  const one = { one: sql`1` };
-  return and(
-    notExists(
-      db
-        .select(one)
-        .from(watchHistory)
-        .where(and(eq(watchHistory.profileId, profileId), eq(watchHistory.contentId, content.contentId))),
-    ),
-    notExists(
-      db
-        .select(one)
-        .from(rating)
-        .where(and(eq(rating.profileId, profileId), eq(rating.contentId, content.contentId))),
-    ),
-    notExists(
-      db
-        .select(one)
-        .from(myList)
-        .where(and(eq(myList.profileId, profileId), eq(myList.contentId, content.contentId))),
-    ),
-  );
 }
 
 /** The genres this profile likes, strongest first, with where each score came from. */
@@ -84,32 +69,30 @@ export async function getTopPicks(profile: Profile, limit = ROW_SIZE, genreId?: 
   //   SUM alone: a title wins just by having many genres (6-genre series beat everything).
   //   AVG alone: extra genres you like don't help (Drama-only beats Drama + Sci-Fi).
   //   ÷ √n: every liked genre still adds to the score, but each extra one adds less.
-  const score = sql<number>`SUM(COALESCE(${genreTaste.tasteScore}, 0)) / SQRT(COUNT(*)::numeric)`;
-
-  // A genre row filters with EXISTS, not on the join: that would drop the title's other genres from the score.
-  const inGenre = alias(contentGenre, "in_genre");
-  const genreFilter =
+  // A genre row keeps titles in that genre with EXISTS, not on the join: that would drop the title's other
+  // genres from the score.
+  const inGenre =
     genreId === undefined
-      ? undefined
-      : exists(
-          db
-            .select({ one: sql`1` })
-            .from(inGenre)
-            .where(and(eq(inGenre.contentId, content.contentId), eq(inGenre.genreId, genreId))),
-        );
+      ? sql``
+      : sql`AND EXISTS (SELECT 1 FROM content_genre WHERE content_id = c.content_id AND genre_id = ${genreId})`;
 
-  return db
-    .select({ contentId: content.contentId, score })
-    .from(content)
-    .innerJoin(contentGenre, eq(contentGenre.contentId, content.contentId)) // one row per (title, genre)
-    .leftJoin(
-      genreTaste, // a genre with no taste counts as 0
-      and(eq(genreTaste.genreId, contentGenre.genreId), eq(genreTaste.profileId, profile.profileId)),
-    )
-    .where(and(allowedFor(profile.maturityLevel), unseenBy(profile.profileId), genreFilter))
-    .groupBy(content.contentId, content.releaseDate)
-    .orderBy(desc(score), sql`${content.releaseDate} DESC NULLS LAST`) // ties: newest first
-    .limit(limit);
+  const { rows } = await db.execute<TopPick>(sql`
+    SELECT c.content_id AS "contentId",
+           SUM(COALESCE(t.taste_score, 0)) / SQRT(COUNT(*)::numeric) AS score
+    FROM content AS c
+    JOIN content_genre AS cg ON cg.content_id = c.content_id      -- one row per (title, genre)
+    LEFT JOIN genre_taste AS t ON t.genre_id = cg.genre_id        -- a genre with no taste counts as 0
+                              AND t.profile_id = ${profile.profileId}
+    WHERE maturity_of(c.age_rating) <= ${profile.maturityLevel}::maturity_level
+      AND NOT EXISTS (SELECT 1 FROM watch_history AS w WHERE w.profile_id = ${profile.profileId} AND w.content_id = c.content_id)
+      AND NOT EXISTS (SELECT 1 FROM rating        AS r WHERE r.profile_id = ${profile.profileId} AND r.content_id = c.content_id)
+      AND NOT EXISTS (SELECT 1 FROM my_list       AS m WHERE m.profile_id = ${profile.profileId} AND m.content_id = c.content_id)
+      ${inGenre}
+    GROUP BY c.content_id, c.release_date
+    ORDER BY score DESC, c.release_date DESC NULLS LAST            -- ties: newest first
+    LIMIT ${limit}
+  `);
+  return rows;
 }
 
 /** Latest history row per title (1-89% watched), newest first. Episodes are hydrated by the caller. */
@@ -134,6 +117,11 @@ async function getContinueWatching(profile: Profile) {
     .where(and(between(latest.progressPercent, 1, 89), allowedFor(profile.maturityLevel)))
     .orderBy(desc(latest.watchedAt))
     .limit(ROW_SIZE);
+}
+
+/** Match %: the best pick is 99, others scale down towards 55; undefined when nothing scores above 0. */
+function matchPercent(score: number, best: number): number | undefined {
+  return best > 0 ? Math.round(55 + 44 * Math.min(1, score / best)) : undefined;
 }
 
 /** The Home page for one profile: hero + rows. */
@@ -165,12 +153,11 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
     loadEpisodeData(continueEntries.flatMap((entry) => (entry.episodeId === null ? [] : [entry.episodeId]))),
   ]);
 
-  // Match %: the best pick is 99, others scale down towards 55; no chip when there is no taste at all.
   const best = picks[0]?.score ?? 0;
   const toItem = (pick: TopPick): RowItem[] => {
     const summary = titles.get(pick.contentId);
     if (!summary) return [];
-    return [{ content: summary, match: best > 0 ? Math.round(55 + 44 * Math.min(1, pick.score / best)) : undefined }];
+    return [{ content: summary, match: matchPercent(pick.score, best) }];
   };
 
   const continueItems = continueEntries.flatMap((entry): RowItem[] => {
@@ -221,5 +208,129 @@ export async function getHomeFeed(profile: Profile): Promise<HomeFeed> {
       : null,
     rows: rows.filter((row) => row.items.length > 0), // empty rows are left out
     generatedAt: new Date().toISOString(),
+  };
+}
+
+/** Points for the best progress on a title; the same steps as the genre_taste view. */
+function watchPoints(percent: number): number {
+  if (percent < 10) return 0;
+  if (percent < 30) return 0.25;
+  if (percent < 50) return 0.5;
+  if (percent < 80) return 0.75;
+  return 1;
+}
+
+/** Everything behind the Home picks for one profile, in the order the pipeline runs (for the "Why these picks?" panel). */
+export async function explainHomeFeed(profile: Profile): Promise<HomeExplanation> {
+  const { profileId, maturityLevel } = profile;
+
+  // Reuse the ranking code as is; only the raw signals and counts are read here.
+  const [taste, topPicks, watched, rated, saved, pickRows, tooMature, catalogue] = await Promise.all([
+    getGenreTaste(profileId),
+    getTopPicks(profile, 10),
+    db
+      .select({ contentId: watchHistory.contentId, percent: max(watchHistory.progressPercent) })
+      .from(watchHistory)
+      .where(eq(watchHistory.profileId, profileId))
+      .groupBy(watchHistory.contentId), // a series has one row per episode: keep the best
+    db.select({ contentId: rating.contentId, stars: rating.value }).from(rating).where(eq(rating.profileId, profileId)),
+    db.select({ contentId: myList.contentId }).from(myList).where(eq(myList.profileId, profileId)),
+    db
+      .select({ name: genre.name })
+      .from(profileGenrePreference)
+      .innerJoin(genre, eq(genre.genreId, profileGenrePreference.genreId))
+      .where(eq(profileGenrePreference.profileId, profileId))
+      .orderBy(genre.name),
+    db
+      .select({ n: count() })
+      .from(content)
+      .where(not(allowedFor(maturityLevel))),
+    db.select({ n: count() }).from(content),
+  ]);
+
+  const titles = await loadContentData([
+    ...watched.map((row) => row.contentId),
+    ...rated.map((row) => row.contentId),
+    ...saved.map((row) => row.contentId),
+    ...topPicks.map((pick) => pick.contentId),
+  ]);
+
+  // Step 1: one entry per title, with the points each signal gives (to every genre of the title).
+  const signalsById = new Map<number, TitleSignals>();
+  const entry = (contentId: number): TitleSignals => {
+    let signals = signalsById.get(contentId);
+    if (!signals) {
+      const summary = titles.get(contentId);
+      signals = {
+        contentId,
+        title: summary?.title ?? `Title ${contentId}`,
+        genres: summary?.genres.map((g) => g.name) ?? [],
+        watched: null,
+        rating: null,
+        myList: null,
+        totalPoints: 0,
+      };
+      signalsById.set(contentId, signals);
+    }
+    return signals;
+  };
+  for (const { contentId, percent } of watched) {
+    entry(contentId).watched = { percent: percent ?? 0, points: watchPoints(percent ?? 0) };
+  }
+  for (const { contentId, stars } of rated) entry(contentId).rating = { stars, points: (stars - 3) / 2 };
+  for (const { contentId } of saved) entry(contentId).myList = { points: 0.5 };
+  const signals = [...signalsById.values()].map((s) => ({
+    ...s,
+    totalPoints: (s.watched?.points ?? 0) + (s.rating?.points ?? 0) + (s.myList?.points ?? 0),
+  }));
+  signals.sort((a, b) => b.totalPoints - a.totalPoints || a.title.localeCompare(b.title));
+
+  // Step 3: redo the pick score by hand from the genre taste so every number can be shown.
+  const tasteOf = new Map(taste.map((row) => [row.genreId, row.tasteScore]));
+  const best = topPicks[0]?.score ?? 0;
+  const explained = topPicks.map((pick): PickExplanation => {
+    const summary = titles.get(pick.contentId);
+    const genres = (summary?.genres ?? []).map((g) => ({
+      genreId: g.genreId,
+      name: g.name,
+      taste: tasteOf.get(g.genreId) ?? 0,
+    }));
+    const sum = genres.reduce((total, g) => total + g.taste, 0);
+    return {
+      contentId: pick.contentId,
+      title: summary?.title ?? `Title ${pick.contentId}`,
+      releaseDate: summary?.releaseDate ?? null,
+      genres,
+      sum,
+      genreCount: genres.length,
+      sqrtN: Math.sqrt(genres.length),
+      score: pick.score,
+      match: matchPercent(pick.score, best),
+    };
+  });
+
+  // Step 4: the funnel. Seen titles only leave the pool if this maturity level could see them anyway.
+  const levels: MaturityLevel[] = ["KIDS", "TEEN", "ADULT"];
+  const seenAllowed = [...signalsById.keys()].filter((id) => {
+    const level = titles.get(id)?.maturityLevel;
+    return level !== undefined && levels.indexOf(level) <= levels.indexOf(maturityLevel);
+  }).length;
+  const total = catalogue[0]?.n ?? 0;
+  const hidden = tooMature[0]?.n ?? 0;
+
+  return {
+    signals,
+    picks: pickRows.map((row) => row.name),
+    taste,
+    topPicks: explained,
+    filters: {
+      catalogue: total,
+      candidates: total - hidden - seenAllowed, // every title has a genre, so all of these get a score
+      maturityLevel,
+      tooMature: hidden,
+      watched: watched.length,
+      rated: rated.length,
+      saved: saved.length,
+    },
   };
 }

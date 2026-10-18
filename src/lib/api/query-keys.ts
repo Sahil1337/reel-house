@@ -31,6 +31,8 @@ export const queryKeys = {
     /** The signed-in user's profiles (seeded from the server-rendered list). */
     list: () => ["profiles"] as const,
     home: (profileId: number) => ["profile", profileId, "home"] as const,
+    /** The "Why these picks?" panel; a child of `home`, so a home refresh also refreshes it. */
+    homeExplanation: (profileId: number) => ["profile", profileId, "home", "explain"] as const,
     myList: (profileId: number) => ["profile", profileId, "my-list"] as const,
     /** Whether one title is in the profile's list (seeded from the server-rendered page). */
     myListStatus: (profileId: number, contentId: number) =>
