@@ -39,8 +39,9 @@ export function TitleHero({
     <section aria-labelledby="title-heading" className="relative isolate">
       <StageBackdrop content={content} className="bottom-auto h-[62svh] md:bottom-0 md:h-auto" />
 
-      <div className="px-4 pt-[34svh] pb-6 sm:px-8 md:pt-40 lg:px-12 lg:pt-48">
-        <div className="flex items-end gap-8 lg:gap-12">
+      <div className="px-4 pt-[34svh] pb-6 sm:px-8 md:pt-36 lg:px-12 lg:pt-40">
+        {/* First row fills the viewport (minus top padding + a 3rem gap) so the fold lands after the actions. */}
+        <div className="grid grid-cols-1 items-end gap-x-8 md:grid-cols-[auto_minmax(0,1fr)] md:grid-rows-[minmax(calc(100svh-12rem),auto)_auto] lg:grid-rows-[minmax(calc(100svh-13rem),auto)_auto] lg:gap-x-12">
           <Poster
             content={content}
             preload
@@ -94,15 +95,18 @@ export function TitleHero({
                 size="xl"
               />
             </div>
+          </div>
 
-            <div className={cn(ENTER, "mt-2 w-full border-t border-foreground/10 pt-4")} style={stagger(5)}>
-              <RatingControl
-                profileId={profileId}
-                contentId={content.contentId}
-                title={content.title}
-                initialRating={activity.rating}
-              />
-            </div>
+          <div
+            className={cn(ENTER, "mt-6 max-w-3xl border-t border-foreground/10 pt-4 md:col-start-2")}
+            style={stagger(5)}
+          >
+            <RatingControl
+              profileId={profileId}
+              contentId={content.contentId}
+              title={content.title}
+              initialRating={activity.rating}
+            />
           </div>
         </div>
       </div>
