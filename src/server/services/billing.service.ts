@@ -17,7 +17,7 @@ import "server-only";
 import { ConflictError, NotFoundError } from "@/server/errors";
 import type { PaymentWithPlan, Subscription, SubscriptionPlan, SubscriptionWithPlan } from "@/types";
 import { db } from "../db";
-import { subscriptionPlan ,subscription, payment } from "../db/schema/billing";
+import { subscriptionPlan, subscription, payment } from "../db/schema/billing";
 import { and, desc, eq } from "drizzle-orm";
 
 type SubscriptionRow = typeof subscription.$inferSelect;
@@ -46,11 +46,10 @@ function toSubscription(row: SubscriptionRow): Subscription {
  * Called by: GET /api/plans
  * Mock today: returns every plan in data/mock/plans.json order (not re-sorted).
  */
-export async function listPlans(): Promise<SubscriptionPlan[]> 
-{ const plans = await db .select() 
-  .from(subscriptionPlan) 
-  .orderBy((subscriptionPlan.priceMonthly)); 
-  return plans.map((plan) => ({ ...plan, priceMonthly: Number(plan.priceMonthly), })); }
+export async function listPlans(): Promise<SubscriptionPlan[]> {
+  const plans = await db.select().from(subscriptionPlan).orderBy(subscriptionPlan.priceMonthly);
+  return plans.map((plan) => ({ ...plan, priceMonthly: Number(plan.priceMonthly) }));
+}
 
 /**
  * One plan by id.
@@ -68,11 +67,9 @@ export async function listPlans(): Promise<SubscriptionPlan[]>
  *   did not check and answered with amount 0).
  */
 export async function getPlan(planId: number): Promise<SubscriptionPlan> {
-  const [plan] = await db.select().from(subscriptionPlan) .where(eq(subscriptionPlan.planId, planId))
+  const [plan] = await db.select().from(subscriptionPlan).where(eq(subscriptionPlan.planId, planId)).limit(1);
 
-    .limit(1);
-
- if (!plan) {
+  if (!plan) {
     throw new NotFoundError("Plan not found.");
   }
   return { ...plan, priceMonthly: Number(plan.priceMonthly) };
@@ -98,22 +95,12 @@ export async function getPlan(planId: number): Promise<SubscriptionPlan> {
  * Called by: GET /api/account
  * Mock today: the first ACTIVE subscription of the user in data/mock/subscriptions.json, with its plan.
  */
-export async function getActiveSubscription(
-  userId: number,
-): Promise<SubscriptionWithPlan | null> {
+export async function getActiveSubscription(userId: number): Promise<SubscriptionWithPlan | null> {
   const [active] = await db
     .select()
     .from(subscription)
-    .innerJoin(
-      subscriptionPlan,
-      eq(subscription.planId, subscriptionPlan.planId),
-    )
-    .where(
-      and(
-        eq(subscription.userId, userId),
-        eq(subscription.status, "ACTIVE"),
-      ),
-    )
+    .innerJoin(subscriptionPlan, eq(subscription.planId, subscriptionPlan.planId))
+    .where(and(eq(subscription.userId, userId), eq(subscription.status, "ACTIVE")))
     .limit(1);
 
   if (!active) {
@@ -153,10 +140,7 @@ export async function listSubscriptions(userId: number): Promise<SubscriptionWit
   const rows = await db
     .select()
     .from(subscription)
-    .innerJoin(
-      subscriptionPlan,
-      eq(subscription.planId, subscriptionPlan.planId),
-    )
+    .innerJoin(subscriptionPlan, eq(subscription.planId, subscriptionPlan.planId))
     .where(eq(subscription.userId, userId))
     .orderBy(desc(subscription.createdAt));
 
@@ -198,14 +182,8 @@ export async function listPayments(userId: number): Promise<PaymentWithPlan[]> {
       planName: subscriptionPlan.name,
     })
     .from(payment)
-    .innerJoin(
-      subscription,
-      eq(subscription.subscriptionId, payment.subscriptionId),
-    )
-    .innerJoin(
-      subscriptionPlan,
-      eq(subscriptionPlan.planId, subscription.planId),
-    )
+    .innerJoin(subscription, eq(subscription.subscriptionId, payment.subscriptionId))
+    .innerJoin(subscriptionPlan, eq(subscriptionPlan.planId, subscription.planId))
     .where(eq(subscription.userId, userId))
     .orderBy(desc(payment.paymentDate));
 
@@ -240,15 +218,13 @@ export async function listPayments(userId: number): Promise<PaymentWithPlan[]> {
  */
 export async function createPendingSubscription(userId: number, planId: number): Promise<Subscription> {
   try {
-    const [created] = await db
-      .insert(subscription)
-      .values({ userId, planId, status: "PENDING" })
-      .returning();
+    const [created] = await db.insert(subscription).values({ userId, planId, status: "PENDING" }).returning();
 
     return toSubscription(created);
   } catch (error) {
-    const code = (error as { code?: string; cause?: { code?: string } }).code
-      ?? (error as { cause?: { code?: string } }).cause?.code;
+    const code =
+      (error as { code?: string; cause?: { code?: string } }).code ??
+      (error as { cause?: { code?: string } }).cause?.code;
     if (code === "23503") {
       throw new NotFoundError("Plan not found.");
     }
@@ -274,10 +250,7 @@ export async function createPendingSubscription(userId: number, planId: number):
  * Throws: NotFoundError("Subscription not found."); ConflictError when it isn't ACTIVE.
  * Called by: POST /api/account/subscriptions/:subscriptionId/cancel
  */
-export async function cancelSubscription(
-  userId: number,
-  subscriptionId: number,
-): Promise<SubscriptionWithPlan> {
+export async function cancelSubscription(userId: number, subscriptionId: number): Promise<SubscriptionWithPlan> {
   const [cancelled] = await db
     .update(subscription)
     .set({ status: "CANCELLED" })
@@ -294,12 +267,7 @@ export async function cancelSubscription(
     const [existing] = await db
       .select({ status: subscription.status })
       .from(subscription)
-      .where(
-        and(
-          eq(subscription.subscriptionId, subscriptionId),
-          eq(subscription.userId, userId),
-        ),
-      )
+      .where(and(eq(subscription.subscriptionId, subscriptionId), eq(subscription.userId, userId)))
       .limit(1);
 
     if (!existing) {

@@ -37,12 +37,12 @@ build guide; that doc's section 5 just summarises it.
 
 **Genre taste.** Each signal gives points (0–1 scale) to every genre of the title it touched:
 
-| Signal | Points | SQL |
-|---|---|---|
-| Watched | <10% → 0 · <30% → 0.25 · <50% → 0.5 · <80% → 0.75 · else 1 | `CASE` on the title's best progress |
-| Rating | 5★ +1 · 4★ +0.5 · 3★ 0 · 2★ −0.5 · 1★ −1 | `(value - 3) / 2.0` |
-| My List | +0.5 | constant |
-| Onboarding genre pick | +1 to that genre directly | constant |
+| Signal                | Points                                                     | SQL                                 |
+| --------------------- | ---------------------------------------------------------- | ----------------------------------- |
+| Watched               | <10% → 0 · <30% → 0.25 · <50% → 0.5 · <80% → 0.75 · else 1 | `CASE` on the title's best progress |
+| Rating                | 5★ +1 · 4★ +0.5 · 3★ 0 · 2★ −0.5 · 1★ −1                   | `(value - 3) / 2.0`                 |
+| My List               | +0.5                                                       | constant                            |
+| Onboarding genre pick | +1 to that genre directly                                  | constant                            |
 
 This lives in **one view, `genre_taste`** (migration `drizzle/0001_genre_taste_view.sql`). It covers every
 profile; you read one with `WHERE profile_id = $1`, and Postgres pushes that filter into all four signal
@@ -67,12 +67,12 @@ every score 0, ordered newest first.
 
 ### Home rows, in order
 
-| # | Row id | Title | Items |
-|---|---|---|---|
-| 1 | `continue-watching` | Continue watching for {name} | latest history row per title with 1–89% |
-| 2 | `top-picks` | Top picks for {name} | unseen titles by genre-taste score, with match % |
-| 3–4 | `genre-picks-{genreId}` | {Genre} for you | the top-picks query filtered to one of the profile's top 2 genres |
-| hero | — | — | the first top pick |
+| #    | Row id                  | Title                        | Items                                                             |
+| ---- | ----------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| 1    | `continue-watching`     | Continue watching for {name} | latest history row per title with 1–89%                           |
+| 2    | `top-picks`             | Top picks for {name}         | unseen titles by genre-taste score, with match %                  |
+| 3–4  | `genre-picks-{genreId}` | {Genre} for you              | the top-picks query filtered to one of the profile's top 2 genres |
+| hero | —                       | —                            | the first top pick                                                |
 
 **Unseen** means the profile has no `watch_history`, `rating` or `my_list` row for the title. Rows 2, 3
 and 4 never repeat a title: an id shown in an earlier row is skipped in later ones (a `Set` in TypeScript).
@@ -98,16 +98,16 @@ const rows = await db
 // rows: [{ contentId: 8, value: 5 }, ...]   ← typed from the schema
 ```
 
-| SQL | Drizzle |
-|---|---|
-| `SELECT c.*` | `select({ ...getTableColumns(content) })` |
-| `JOIN` / `LEFT JOIN` | `.innerJoin(t, eq(...))` / `.leftJoin(t, and(eq(...), eq(...)))` |
-| `WHERE id = ANY($ids)` | `inArray(content.contentId, ids)` |
-| `NOT EXISTS (SELECT 1 ...)` | ``notExists(db.select({ one: sql`1` }).from(t).where(...))`` |
-| `DISTINCT ON (x)` | `db.selectDistinctOn([t.x], {...})` |
-| same table twice | `alias(contentGenre, "in_genre")` |
-| `INSERT ... ON CONFLICT DO UPDATE` | `.insert(t).values(...).onConflictDoUpdate({ target: [...], set: {...} })` |
-| a view | `genreTaste` is declared with `pgView(...).existing()`, query it like a table |
+| SQL                                | Drizzle                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `SELECT c.*`                       | `select({ ...getTableColumns(content) })`                                     |
+| `JOIN` / `LEFT JOIN`               | `.innerJoin(t, eq(...))` / `.leftJoin(t, and(eq(...), eq(...)))`              |
+| `WHERE id = ANY($ids)`             | `inArray(content.contentId, ids)`                                             |
+| `NOT EXISTS (SELECT 1 ...)`        | ``notExists(db.select({ one: sql`1` }).from(t).where(...))``                  |
+| `DISTINCT ON (x)`                  | `db.selectDistinctOn([t.x], {...})`                                           |
+| same table twice                   | `alias(contentGenre, "in_genre")`                                             |
+| `INSERT ... ON CONFLICT DO UPDATE` | `.insert(t).values(...).onConflictDoUpdate({ target: [...], set: {...} })`    |
+| a view                             | `genreTaste` is declared with `pgView(...).existing()`, query it like a table |
 
 Use the `sql` tag **only** for what the builder can't express, typed with `sql<T>`:
 ``sql<MaturityLevel>`maturity_of(${content.ageRating})` ``, the √ score ``sql<number>`SUM(...) / SQRT(COUNT(*)::numeric)` ``,
@@ -115,14 +115,14 @@ Use the `sql` tag **only** for what the builder can't express, typed with `sql<T
 
 Things that will bite you:
 
-| Need | Write | Why |
-|---|---|---|
-| An enum inside `sql` | `${level}::maturity_level` | Without the cast Postgres compares text |
-| Numbers | nothing | `NUMERIC`/`BIGINT` are already parsed to `number` in `db/index.ts` |
-| Timestamps | `.toISOString()` | `timestamptz` comes back as a JS `Date`; the API sends ISO strings |
-| A transaction | `await db.transaction(async (tx) => { await tx.insert(...); ... })` | Use `tx`, not `db`, inside |
-| FK violation → 404 | `(error as { cause?: { code?: string } }).cause?.code === "23503"` | Drizzle wraps the pg error in `DrizzleQueryError`; the code is on `.cause` |
-| A raw subquery inside a select field | split it into its own typed query | In a single-table select Drizzle leaves column names unqualified, so a correlated subquery there becomes ambiguous (see `loadContentData`) |
+| Need                                 | Write                                                               | Why                                                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| An enum inside `sql`                 | `${level}::maturity_level`                                          | Without the cast Postgres compares text                                                                                                    |
+| Numbers                              | nothing                                                             | `NUMERIC`/`BIGINT` are already parsed to `number` in `db/index.ts`                                                                         |
+| Timestamps                           | `.toISOString()`                                                    | `timestamptz` comes back as a JS `Date`; the API sends ISO strings                                                                         |
+| A transaction                        | `await db.transaction(async (tx) => { await tx.insert(...); ... })` | Use `tx`, not `db`, inside                                                                                                                 |
+| FK violation → 404                   | `(error as { cause?: { code?: string } }).cause?.code === "23503"`  | Drizzle wraps the pg error in `DrizzleQueryError`; the code is on `.cause`                                                                 |
+| A raw subquery inside a select field | split it into its own typed query                                   | In a single-table select Drizzle leaves column names unqualified, so a correlated subquery there becomes ambiguous (see `loadContentData`) |
 
 ---
 
@@ -148,13 +148,13 @@ Test after **every** step with psql or curl (section 6). Don't write all of it a
 The existing spec ([person-c doc §4](../../docs/backend/person-c-activity-recommendations.md#4-activityservicets))
 has the SQL for every function. Build them in this order; each one is one or two queries.
 
-| Order | Function | Spec | The one thing to get right |
-|---|---|---|---|
-| 1 | `isInMyList`, `addToMyList`, `removeFromMyList`, `listMyList` | §4.4–4.6, 4.10 | `ON CONFLICT DO NOTHING`; FK 23503 → `NotFoundError("Title not found.")` |
-| 2 | `getRating`, `rateTitle`, `removeRating` | §4.7, 4.8, 4.11 | upsert with `ON CONFLICT (profile_id, content_id) DO UPDATE` |
-| 3 | `listHistory`, `removeHistoryEntry` | §4.2, 4.3 | `c.*, e.*` clash on `title` etc.: alias columns explicitly; 0 rows deleted → 404 |
-| 4 | `recordProgress` | §4.1 | movie → `episode_id = NULL`; series episode must belong to the title (422); then just the upsert (no transaction) |
-| 5 | `getNextEpisode`, `getResumePoint`, `getTitleActivity` | §4.9, 4.12, 4.13 | `(season_number, episode_number) > (...)` row comparison; run the 3 helpers with `Promise.all` |
+| Order | Function                                                      | Spec             | The one thing to get right                                                                                        |
+| ----- | ------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1     | `isInMyList`, `addToMyList`, `removeFromMyList`, `listMyList` | §4.4–4.6, 4.10   | `ON CONFLICT DO NOTHING`; FK 23503 → `NotFoundError("Title not found.")`                                          |
+| 2     | `getRating`, `rateTitle`, `removeRating`                      | §4.7, 4.8, 4.11  | upsert with `ON CONFLICT (profile_id, content_id) DO UPDATE`                                                      |
+| 3     | `listHistory`, `removeHistoryEntry`                           | §4.2, 4.3        | `c.*, e.*` clash on `title` etc.: alias columns explicitly; 0 rows deleted → 404                                  |
+| 4     | `recordProgress`                                              | §4.1             | movie → `episode_id = NULL`; series episode must belong to the title (422); then just the upsert (no transaction) |
+| 5     | `getNextEpisode`, `getResumePoint`, `getTitleActivity`        | §4.9, 4.12, 4.13 | `(season_number, episode_number) > (...)` row comparison; run the 3 helpers with `Promise.all`                    |
 
 Simplification: `listHistory` and `listMyList` need a `ContentSummary` per row. Reuse `loadContentData` from B2
 (it lives in `src/server/db/queries/content.ts`, next to `loadEpisodeData`) instead of writing the genres subquery twice.
@@ -243,23 +243,24 @@ SELECT genre_id, genre, taste_score
 ```
 
 How the view works (the same query we built step by step in `demo.sql`):
+
 1. `watched` CTE: one row per (profile, title), `MAX(progress_percent)`. A series has one `watch_history` row
    **per episode**; without this, Breaking Bad would count 3 times for Riya.
 2. `genre_points` CTE: four `UNION ALL` blocks, one per signal, each giving `(profile_id, genre_id, source,
-   points)`. Watch, rating and My List join `content_genre` (a title's points go to each of its genres); the
+points)`. Watch, rating and My List join `content_genre` (a title's points go to each of its genres); the
    onboarding pick is already a genre, so it needs no join.
 3. Final `SELECT`: `SUM(points)` per (profile, genre) = `taste_score`, plus one `SUM(...) FILTER (WHERE source = ...)`
    column per signal so you can see where the total came from. `HAVING SUM > 0` drops disliked genres.
 
 Expected for **Riya (1)**:
 
-| genre | watch | rating | my_list | pick | **taste** |
-|---|---|---|---|---|---|
-| Drama | 3.00 | 2.00 | 2.00 | 1.00 | **8.00** |
-| Science Fiction | 3.75 | 2.00 | 1.00 | 1.00 | **7.75** |
-| Adventure | 2.75 | 1.00 | 0 | 0 | **3.75** |
-| Crime | 2.00 | 1.50 | 0 | 0 | **3.50** |
-| … Comedy | 1.00 | −0.50 | 0 | 0 | **0.50** |
+| genre           | watch | rating | my_list | pick | **taste** |
+| --------------- | ----- | ------ | ------- | ---- | --------- |
+| Drama           | 3.00  | 2.00   | 2.00    | 1.00 | **8.00**  |
+| Science Fiction | 3.75  | 2.00   | 1.00    | 1.00 | **7.75**  |
+| Adventure       | 2.75  | 1.00   | 0       | 0    | **3.75**  |
+| Crime           | 2.00  | 1.50   | 0       | 0    | **3.50**  |
+| … Comedy        | 1.00  | −0.50  | 0       | 0    | **0.50**  |
 
 Kabir (2): Action 6, Adventure 4.5, Animation 3.5. Mini (3): Animation 1, Family 1 (My List only).
 
@@ -272,6 +273,7 @@ no rows at all means nothing yet ("The newest titles …", hero "Picked for you"
 
 Every unseen title gets `SUM(taste of its genres) / SQRT(number of genres it has)`; a genre the profile has
 no taste for counts as 0. Why √ (full reasoning, with numbers, is in `demo.sql` above the query):
+
 - Plain **SUM** rewards having many genres: for Riya, "The 100" (6 genres) scored 27.5 and swept the top.
 - Plain **AVG** punishes extra matching genres: Drama-only titles (8) beat Drama + Sci-Fi (7.9), all tied.
 - **÷ √n** sits in between: each extra liked genre still helps, but less each time. Ex Machina (Drama + Sci-Fi)
@@ -297,6 +299,7 @@ and a profile with only a few tasted genres would get no picks at all.
 Ask for `ROW_SIZE * 2`: the hero takes one, and the rest are spares.
 
 Expected:
+
 - **Riya**: The Martian 11.26, The 100 11.23, Ex Machina 11.14, then Logan / Arrival / The Prestige 10.83.
 - **Kabir (2, TEEN)**: What If…?, Super Dragon Ball Heroes, My Hero Academia, Dragon Ball Super, … at 8.94 (Action/Adventure/Animation).
 - **Mini (3, KIDS)**: Shrek 1.57, then Moana, Zootopia, Frozen, Wreck-It Ralph at 1.5; only KIDS titles. Inside Out must **not** appear, because it's on her My List.
@@ -401,6 +404,7 @@ curl -b jar $BASE/api/profiles/3/home | jq '[.rows[].items[].content.maturityLev
 ```
 
 Checklist:
+
 - [ ] Riya: hero is a Drama title. Rows in order: continue-watching (4), top-picks (18), then 2 genre rows (Drama, Science Fiction).
 - [ ] No title appears in two of top-picks / genre rows.
 - [ ] No row except continue-watching contains a title Riya watched, rated or saved.

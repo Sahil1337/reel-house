@@ -380,15 +380,15 @@ recommendation-related object is this view: one row per (profile, genre) with a 
 `taste_score`, worked out from `watch_history`, `rating`, `my_list` and
 `profile_genre_preference` when Home is built (see [Ranking](#ranking)).
 
-| Column | Meaning |
-| --- | --- |
-| `profile_id` | The profile. |
-| `genre_id`, `genre` | The genre and its name. |
-| `watch_score` | Points from watch history (0-1 per title). |
-| `rating_score` | Points from ratings ((value - 3) / 2: 5 stars +1 ... 1 star -1). |
-| `my_list_score` | Points from My List (+0.5 per saved title). |
-| `pick_score` | Points from onboarding picks (+1 for a picked genre). |
-| `taste_score` | The sum of the four. Ranking uses this; the per-source columns explain it. |
+| Column              | Meaning                                                                    |
+| ------------------- | -------------------------------------------------------------------------- |
+| `profile_id`        | The profile.                                                               |
+| `genre_id`, `genre` | The genre and its name.                                                    |
+| `watch_score`       | Points from watch history (0-1 per title).                                 |
+| `rating_score`      | Points from ratings ((value - 3) / 2: 5 stars +1 ... 1 star -1).           |
+| `my_list_score`     | Points from My List (+0.5 per saved title).                                |
+| `pick_score`        | Points from onboarding picks (+1 for a picked genre).                      |
+| `taste_score`       | The sum of the four. Ranking uses this; the per-source columns explain it. |
 
 It covers every profile; callers filter with `WHERE profile_id = $1`, for example
 `SELECT genre_id, taste_score FROM genre_taste WHERE profile_id = $1 ORDER BY taste_score DESC`.

@@ -30,12 +30,7 @@ export function SqlSteps({ statements, title }: { statements: SqlStatement[]; ti
           </CardDescription>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <CopyButton
-            text={() => scriptText(statements)}
-            label="Copy full transaction"
-            variant="outline"
-            size="sm"
-          />
+          <CopyButton text={() => scriptText(statements)} label="Copy full transaction" variant="outline" size="sm" />
         </div>
       </CardHeader>
 

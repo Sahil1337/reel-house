@@ -21,7 +21,7 @@ Every implementation in this plan must adhere strictly to the established system
      - `NotFoundError(message)` -> `404 Not Found` (used also when a resource belongs to another user)
      - `ConflictError(message, code?)` -> `409 Conflict` (unique constraints, state limits)
 2. **SQL Execution Style**:
-   - Use Drizzle's raw SQL template tag: `db.execute<RowType>(sql\`...\`)` or `tx.execute(...)` inside `db.transaction(...)`.
+   - Use Drizzle's raw SQL template tag: `db.execute<RowType>(sql\`...\`)`or`tx.execute(...)`inside`db.transaction(...)`.
    - Column values come back in `snake_case`; explicitly map them to camelCase TypeScript interfaces.
    - Values are bound parameterized via `${param}` (never string-concatenated).
    - Enums must be cast explicitly: `${level}::maturity_level`.
@@ -77,9 +77,11 @@ Phase 5: Auth Hardening & Cleanup [DONE]
 ## 3. Detailed Phase Breakdown
 
 ### Phase 1: Accounts, Profiles & Auth Guards (Priority Day 1–2)
-*Goal: Provide real session verification and profile ownership checks for the entire platform.*
+
+_Goal: Provide real session verification and profile ownership checks for the entire platform._
 
 #### 1.1 `src/server/services/users.service.ts`
+
 - **`findUserById(userId: number): Promise<User | null>`**:
   - `SELECT user_id, name, email, phone, role, created_at FROM users WHERE user_id = $1;`
   - Explicit column selection ensures `password_hash` is never returned.
@@ -90,6 +92,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   - Splits output into `{ user: User, passwordHash: string }`.
 
 #### 1.2 `src/server/services/profiles.service.ts`
+
 - **`listProfiles(userId: number): Promise<Profile[]>`**:
   - `SELECT profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NOT NULL) AS onboarding_completed FROM profile WHERE user_id = $1 ORDER BY profile_id;`
 - **`getOwnedProfile(userId: number, profileId: number): Promise<Profile>`**:
@@ -97,15 +100,17 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   - If no row matches, throws `NotFoundError("Profile not found.")`. (Never reveals existence of another user's profile).
 
 #### 1.3 Swap Auth Guards in `src/app/api/_lib/auth.ts`
+
 - Replace mock invocations with real service calls:
   - `requireUser()` -> calls real `findUserById(userId)`
   - `requireAdmin()` -> checks `user.role === "ADMIN"`
   - `requireOwnedProfile(profileId)` -> calls real `getOwnedProfile(user.userId, id)`
   - `getSelectedProfile()` -> uses `getOwnedProfile(userId, profileId)`
 - Verify all mock imports in `src/app/api/_lib/auth.ts` are removed.
-- *Milestone Check*: Yash (B) and Sahil (C) can now safely execute against real auth guards.
+- _Milestone Check_: Yash (B) and Sahil (C) can now safely execute against real auth guards.
 
 #### 1.4 Sign-Up Transaction & Session Initiation
+
 - **`createUser(input: NewUser): Promise<User>`**:
   - Run inside `db.transaction(async (tx) => ...)`:
     1. Insert into `users` (`name`, `email`, `password_hash`, `phone`, `role = 'USER'`) returning user columns. Catch unique violation `23505` on `users_email_key` -> throw `ConflictError("An account with that email already exists.", "EMAIL_TAKEN")`.
@@ -113,6 +118,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
 - Wire `src/app/api/auth/sign-up/route.ts` to issue the session cookie and redirect to `/profiles`.
 
 #### 1.5 Profile CRUD & Invariants
+
 - **`createProfile(userId, input)`**:
   - Check profile count `< 5` (`MAX_PROFILES`); if at limit throw `ConflictError(..., "PROFILE_LIMIT")`.
   - Insert into `profile`. Catch `23505` (`profile_user_name_key`) -> throw `ConflictError(..., "NAME_TAKEN")`.
@@ -125,6 +131,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   - Clear `profileId` cookie if the active profile was deleted.
 
 #### 1.6 Onboarding Genre Preferences
+
 - **`getGenrePreferences(profileId: number): Promise<number[]>`**:
   - `SELECT genre_id FROM profile_genre_preference WHERE profile_id = $1;`
 - **`saveGenrePreferences(profileId: number, genreIds: number[]): Promise<void>`**:
@@ -134,17 +141,20 @@ Phase 5: Auth Hardening & Cleanup [DONE]
     2. `DELETE FROM profile_genre_preference WHERE profile_id = $1;`
     3. Bulk insert genre IDs: `INSERT INTO profile_genre_preference (profile_id, genre_id) VALUES ...`
     4. `UPDATE profile SET onboarded_at = now() WHERE profile_id = $1;`
-  - *Milestone Check*: Unblocks Sahil's cold-start recommendation algorithm.
+  - _Milestone Check_: Unblocks Sahil's cold-start recommendation algorithm.
 
 ---
 
 ### Phase 2: Content Catalogue Reads
-*Goal: Provide fast, maturity-filtered search, detail, and similarity queries.*
+
+_Goal: Provide fast, maturity-filtered search, detail, and similarity queries._
 
 #### 2.1 `listGenres(): Promise<Genre[]>`
+
 - `SELECT genre_id, name FROM genre ORDER BY name;`
 
 #### 2.2 `getContentDetail(contentId: number): Promise<ContentDetail>`
+
 - Execute coordinated queries:
   1. Main content row: `SELECT content_id, content_type, title, description, release_date, duration_minutes, age_rating, maturity_of(age_rating) AS maturity_level, poster_url, backdrop_url FROM content WHERE content_id = $1;` -> throws `NotFoundError("Title not found.")` if missing.
   2. Genres: `SELECT g.genre_id, g.name FROM content_genre cg JOIN genre g ON g.genre_id = cg.genre_id WHERE cg.content_id = $1 ORDER BY g.name;`
@@ -156,6 +166,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   6. Assemble nested `ContentDetail` model.
 
 #### 2.3 `searchContent(query: ContentSearch): Promise<ContentSummary[]>`
+
 - Dynamic query builder using `sql` fragments:
   - **Maturity Filter**: `${maturityLevel ? sql\`AND maturity_of(c.age_rating) <= ${maturityLevel}::maturity_level\` : sql\`\`}`
   - **Type Filter**: `${type ? sql\`AND c.content_type = ${type}::content_type\` : sql\`\`}`
@@ -169,6 +180,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   - Correlated JSON subquery for genres: `COALESCE((SELECT json_agg(json_build_object('genreId', g.genre_id, 'name', g.name)) FROM content_genre cg JOIN genre g ON g.genre_id = cg.genre_id WHERE cg.content_id = c.content_id), '[]'::json) AS genres`.
 
 #### 2.4 `getSimilarTitles(contentId, maturityLevel, limit)`
+
 - Query overlapping genres with self-join on `content_genre`:
   ```sql
   WITH target_genres AS (
@@ -195,9 +207,11 @@ Phase 5: Auth Hardening & Cleanup [DONE]
 ---
 
 ### Phase 3: Admin Dashboard & Live Ingestion
-*Goal: Provide platform analytics and reliable TMDB content ingestion.*
+
+_Goal: Provide platform analytics and reliable TMDB content ingestion._
 
 #### 3.1 Natural Key Matchers
+
 - **`markInCatalog(items: TmdbSearchResult[])`**:
   - Match via `(title, content_type, release_date)` against `content`.
   - Returns `inCatalog: boolean` flag for each item.
@@ -205,6 +219,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   - Returns existing `content_id` if title is already in the database.
 
 #### 3.2 `getDashboard(): Promise<AdminDashboard>`
+
 - Execute the 9 analytical SQL queries in parallel (`Promise.all`):
   1. `totalUsers`: `SELECT COUNT(*) FROM users;`
   2. `activeSubscriptions`: `SELECT COUNT(*) FROM subscription WHERE status = 'ACTIVE';`
@@ -217,6 +232,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   9. `subscriptionsByPlan`: Subscription counts grouped by `subscription_plan`.
 
 #### 3.3 `importTitle(input: ImportTitleInput): Promise<ImportTitleResult>`
+
 - Atomic multi-table insertion in `db.transaction(async (tx) => ...)`:
   1. Upsert `content`:
      ```sql
@@ -240,9 +256,11 @@ Phase 5: Auth Hardening & Cleanup [DONE]
 ---
 
 ### Phase 4: Admin Content Management
-*Goal: Allow full administrative visibility, cascade previews, editing, and deletion.*
+
+_Goal: Allow full administrative visibility, cascade previews, editing, and deletion._
 
 #### 4.1 `listContentForAdmin(filters: AdminContentFilters)`
+
 - Paginated search with `total` count.
 - Includes season and episode counts using correlated subqueries:
   ```sql
@@ -259,6 +277,7 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   ```
 
 #### 4.2 `getContentDeletionImpact(contentId: number): Promise<ContentDeletionImpact>`
+
 - Single query returning counts of affected rows across child tables:
   ```sql
   SELECT c.content_id, c.title, c.content_type,
@@ -274,17 +293,20 @@ Phase 5: Auth Hardening & Cleanup [DONE]
   ```
 
 #### 4.3 `deleteContent(contentId: number): Promise<void>`
+
 - `DELETE FROM content WHERE content_id = $1;` (Postgres `ON DELETE CASCADE` cleans up all references).
 - If no rows affected, throw `NotFoundError("Title not found.")`.
 
 #### 4.4 `updateContent(contentId: number, input: UpdateContentInput)`
+
 - Update title, description, releaseDate, ageRating, etc.
 - Catch unique violation `23505` (`content_title_type_release_key`) -> throw `ConflictError("Another title with this name, type and release date already exists.", "CONTENT_EXISTS")`.
 
 ---
 
 ### Phase 5: Hardening, Polish & Verification
-*Goal: Ensure security, performance, and clean codebase state.*
+
+_Goal: Ensure security, performance, and clean codebase state._
 
 1. **Auth Hardening**:
    - In `findUserCredentialsByEmail`, if no user is found, execute a dummy password comparison with `timingSafeEqual` to equalize execution time and prevent user enumeration timing attacks.

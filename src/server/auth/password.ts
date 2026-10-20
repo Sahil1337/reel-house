@@ -32,4 +32,3 @@ export async function verifyPassword(password: string, stored: string): Promise<
 /** Pre-computed scrypt hash to equalize timing when an email does not exist. */
 export const DUMMY_HASH =
   "scrypt$fdbb05fcf9d711e389a771f4e6a35088$95f1d9ef5bf3f50051b44f851bdfe0de16f309ff255d4b54ab5c926208f5d5fc07406d592ceb3807ccc235fe5593c2a7e224474f8160dd593b13abc392127a43";
-
