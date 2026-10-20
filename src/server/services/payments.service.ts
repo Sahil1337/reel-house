@@ -42,7 +42,7 @@
 import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, gt, ne, or, sql } from "drizzle-orm";
 
 import { ServiceError } from "@/server/errors";
 import type {
@@ -372,10 +372,11 @@ export async function recordFailedPayment(payment: RazorpayPayment): Promise<voi
  *      activate, and log it for a manual refund.
  *   5. If the subscription is PENDING (or CANCELLED as an abandoned checkout — the money was taken, so
  *      honour it):
- *        UPDATE subscription SET status = 'CANCELLED', end_date = now()
- *          WHERE user_id = $user AND status = 'ACTIVE' AND subscription_id <> $1;
+ *        UPDATE subscription SET status = 'CANCELLED', end_date = LEAST(end_date, now())
+ *          WHERE user_id = $user AND subscription_id <> $1
+ *            AND (status = 'ACTIVE' OR (status = 'CANCELLED' AND end_date > now()));
  *          -- plan change: must run first, the partial UNIQUE (user_id) WHERE status = 'ACTIVE' index
- *          -- allows only one ACTIVE row per user
+ *          -- allows only one ACTIVE row per user; a cancelled plan still in its paid period ends too
  *        UPDATE subscription SET status = 'ACTIVE', start_date = now(), end_date = now() + interval '1 month'
  *          WHERE subscription_id = $1;
  *      If it is already ACTIVE (a renewal order on the same subscription):
@@ -451,15 +452,19 @@ export async function recordCapturedPayment(
 
     // 5. Activate (PENDING, or an abandoned CANCELLED checkout — the money was taken) or extend (renewal).
     if (locked.status === "PENDING" || locked.status === "CANCELLED") {
-      // The old ACTIVE plan ends first: only one ACTIVE row per user is allowed.
+      // The old plan ends first: only one ACTIVE row per user is allowed, and a cancelled plan still in its
+      // paid period would otherwise keep running alongside the new one.
       await tx
         .update(subscription)
         .set({ status: "CANCELLED", endDate: sql`LEAST(${subscription.endDate}, now())` })
         .where(
           and(
             eq(subscription.userId, locked.userId),
-            eq(subscription.status, "ACTIVE"),
             ne(subscription.subscriptionId, locked.subscriptionId),
+            or(
+              eq(subscription.status, "ACTIVE"),
+              and(eq(subscription.status, "CANCELLED"), gt(subscription.endDate, sql`now()`)),
+            ),
           ),
         );
       await tx

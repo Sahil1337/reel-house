@@ -109,3 +109,65 @@ export function describeSignals(s: TitleSignals) {
   if (s.myList) parts.push(`on My List → ${points(s.myList.points)}`);
   return parts.join(" · ");
 }
+
+/** One signal a title gave to a genre, in words: "watched 100%" → +1. */
+export interface EvidencePart {
+  source: Source;
+  how: string;
+  value: number;
+}
+
+/** A title (or the onboarding picks) that gave a pick's genre its taste, and every signal behind it. */
+export interface Evidence {
+  id: string;
+  title: string;
+  /** Enough for a poster; null for the onboarding picks. */
+  poster: Pick<TitleSignals, "title" | "posterUrl" | "releaseDate" | "contentType"> | null;
+  parts: EvidencePart[];
+  total: number;
+}
+
+/** Everything that fed one genre's taste, biggest contribution first. */
+export function evidenceFor(genre: string, data: HomeExplanation): Evidence[] {
+  const list: Evidence[] = [];
+  for (const s of data.signals) {
+    if (!s.genres.includes(genre)) continue;
+    const parts: EvidencePart[] = [];
+    if (s.watched && s.watched.points !== 0)
+      parts.push({ source: "watch", how: `watched ${s.watched.percent}%`, value: s.watched.points });
+    if (s.rating && s.rating.points !== 0)
+      parts.push({ source: "rating", how: `rated ${s.rating.stars}★`, value: s.rating.points });
+    if (s.myList) parts.push({ source: "list", how: "on My List", value: s.myList.points });
+    if (parts.length === 0) continue;
+    list.push({
+      id: titleNode(s.contentId),
+      title: s.title,
+      poster: s,
+      parts,
+      total: parts.reduce((t, p) => t + p.value, 0),
+    });
+  }
+  if (data.picks.includes(genre)) {
+    list.push({
+      id: ONBOARDING,
+      title: "Onboarding pick",
+      poster: null,
+      parts: [{ source: "pick", how: "picked in setup", value: 1 }],
+      total: 1,
+    });
+  }
+  return list.sort((a, b) => b.total - a.total);
+}
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th" */
+export function ordinal(n: number) {
+  const rem = n % 100;
+  const suffix = rem >= 11 && rem <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
+/** "Action, Fantasy and Mystery" */
+export function listWords(items: string[]) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { MockPlayer, type PlayerEpisode } from "@/components/player/mock-player";
+import { PlanRequired } from "@/components/player/plan-required";
 import { serverApi } from "@/lib/api/server";
 import { requireProfile } from "@/server/session/current-session";
 import { formatEpisodeCode } from "@/lib/format";
@@ -27,7 +28,7 @@ async function loadContent(param: string): Promise<ContentDetail | null> {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const content = await loadContent((await params).contentId);
-  return { title: content ? `Watching ${content.title}` : "Player" };
+  return { title: content ? content.title : "Player" };
 }
 
 export default async function WatchPage({ params, searchParams }: Props) {
@@ -36,8 +37,15 @@ export default async function WatchPage({ params, searchParams }: Props) {
     searchParams,
     requireProfile(),
   ]);
-  const content = await loadContent(contentId);
+  const [content, { user, subscription }] = await Promise.all([loadContent(contentId), serverApi.getAccount()]);
   if (!content || !isAllowedFor(profile.maturityLevel, content.maturityLevel)) notFound();
+
+  // No running plan, no playback: the progress API refuses too (403 SUBSCRIPTION_REQUIRED).
+  if (!subscription) {
+    const [plans, history] = await Promise.all([serverApi.getPlans(), serverApi.getSubscriptions()]);
+    const lastPlan = history.find((entry) => entry.endDate !== null) ?? null;
+    return <PlanRequired content={content} user={user} plans={plans} lastPlan={lastPlan} />;
+  }
 
   const { resume } = await serverApi.getTitleActivity(profile.profileId, content.contentId);
 

@@ -12,7 +12,7 @@ export function NumbersTables({ data }: { data: HomeExplanation }) {
     <div className="grid gap-6 lg:grid-cols-2">
       <Block
         title="Signals per title"
-        hint="Watched: best progress (<10% 0, <30% 0.25, <50% 0.5, <80% 0.75, else 1) · Rating: (stars − 3) ÷ 2 · My List: +0.5. The total goes to every genre of the title."
+        hint="Watched <10% 0 · <30% 0.25 · <50% 0.5 · <80% 0.75 · else 1. Rating (stars − 3) ÷ 2. My List +0.5."
       >
         <Table className="text-xs [&_td]:px-2 [&_th]:px-2">
           <TableHeader>
@@ -50,7 +50,7 @@ export function NumbersTables({ data }: { data: HomeExplanation }) {
         </p>
       </Block>
 
-      <Block title="Genre taste (the genre_taste view)" hint="Points added up per genre, strongest first.">
+      <Block title="Genre taste" hint="Each title's points, added up per genre.">
         <Table className="text-xs [&_td]:px-2 [&_th]:px-2">
           <TableHeader>
             <TableRow>
@@ -79,7 +79,7 @@ export function NumbersTables({ data }: { data: HomeExplanation }) {
 
       <Block
         title="Top pick scores"
-        hint="score = SUM(genre taste) ÷ √(number of genres) · match = 55 + 44 × score ÷ best score · ties: newest first."
+        hint="score = sum ÷ √genres · match = 55 + 44 × score ÷ best · ties: newest first."
         className="lg:col-span-2"
       >
         <Table className="text-xs [&_td]:px-2 [&_th]:px-2">

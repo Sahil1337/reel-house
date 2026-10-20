@@ -57,11 +57,14 @@ export function ChangePlan({
   plans,
   current,
   onChanged,
+  compact = false,
 }: {
   user: User;
   plans: SubscriptionPlan[];
   current: SubscriptionWithPlan | null;
   onChanged: (subscription: SubscriptionWithPlan) => void;
+  /** Tighter cards with the price beside the name, for the paywall where everything fits one screen. */
+  compact?: boolean;
 }) {
   const router = useRouter();
   const [target, setTarget] = useState<SubscriptionPlan | null>(null);
@@ -184,28 +187,30 @@ export function ChangePlan({
 
       <ul className="grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-4 lg:gap-5">
         {plans.map((plan) => {
-          const isCurrent = current?.planId === plan.planId;
+          // A cancelled plan can be bought again; it just stays marked until its period runs out.
+          const isCurrent = current?.status === "ACTIVE" && current.planId === plan.planId;
           return (
             <li
               key={plan.planId}
               className={cn(
-                "flex flex-col gap-5 rounded-2xl border bg-card p-6",
+                "flex flex-col rounded-2xl border bg-card",
+                compact ? "gap-4 p-5" : "gap-5 p-6",
                 isCurrent && "border-primary/50 bg-primary/[0.04]",
               )}
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className={cn("flex justify-between gap-3", compact ? "items-baseline" : "items-start")}>
                 <h3 className="font-display text-3xl leading-none font-bold tracking-wide uppercase">{plan.name}</h3>
                 {isCurrent ? <Badge variant="outline">Current plan</Badge> : null}
+                {compact ? <PlanPrice plan={plan} className="text-2xl" /> : null}
               </div>
-              <p className="flex items-baseline gap-1">
-                <span className="font-mono text-3xl font-semibold tabular-nums">
-                  {formatCurrency(plan.priceMonthly)}
-                </span>
-                <span className="text-sm text-muted-foreground">/month</span>
-              </p>
+              {compact ? null : <PlanPrice plan={plan} className="text-3xl" />}
               {/* The same tear line as the membership ticket: what you get sits below it. */}
               <div aria-hidden="true" className="border-t-2 border-dashed" />
-              <PlanFeatureList plan={plan} />
+              <PlanFeatureList
+                plan={plan}
+                limit={compact ? 2 : undefined}
+                className={compact ? "gap-1.5" : undefined}
+              />
               <Button
                 variant={isCurrent ? "outline" : "default"}
                 disabled={isCurrent || busy}
@@ -234,6 +239,15 @@ export function ChangePlan({
         </DialogPopup>
       </Dialog>
     </>
+  );
+}
+
+function PlanPrice({ plan, className }: { plan: SubscriptionPlan; className?: string }) {
+  return (
+    <p className="flex shrink-0 items-baseline gap-1">
+      <span className={cn("font-mono font-semibold tabular-nums", className)}>{formatCurrency(plan.priceMonthly)}</span>
+      <span className="text-sm text-muted-foreground">/month</span>
+    </p>
   );
 }
 

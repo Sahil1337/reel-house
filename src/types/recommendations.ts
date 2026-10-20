@@ -1,5 +1,5 @@
 /** Shapes for the Home page (GET /api/profiles/:profileId/home), its "Why these picks?" explainer (…/home/explain) and the queries behind them. */
-import type { ContentSummary, Episode, MaturityLevel } from "./catalog";
+import type { ContentSummary, ContentType, Episode, MaturityLevel } from "./catalog";
 
 /** One row of the genre_taste view for a profile: how much it likes this genre, and from which signals. */
 export interface GenreTaste {
@@ -58,6 +58,9 @@ export interface HomeFeed {
 export interface TitleSignals {
   contentId: number;
   title: string;
+  posterUrl: string | null;
+  contentType: ContentType;
+  releaseDate: string | null;
   genres: string[];
   /** Best progress over all episodes (0–100) and the points it earns; null if never watched. */
   watched: { percent: number; points: number } | null;
@@ -79,6 +82,8 @@ export interface PickGenre {
 export interface PickExplanation {
   contentId: number;
   title: string;
+  posterUrl: string | null;
+  contentType: ContentType;
   /** Breaks ties: equal scores go newest first. */
   releaseDate: string | null;
   genres: PickGenre[];

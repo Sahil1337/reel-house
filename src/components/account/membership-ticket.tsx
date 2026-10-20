@@ -48,6 +48,8 @@ export function MembershipTicket({
   const { plan } = subscription;
   const progress = periodProgress(subscription.startDate, subscription.endDate, today);
   const serial = String(subscription.subscriptionId).padStart(6, "0");
+  // Cancelled plans stay watchable until end_date; they just won't renew.
+  const cancelled = subscription.status === "CANCELLED";
 
   return (
     <div className="flex flex-col gap-3">
@@ -74,7 +76,9 @@ export function MembershipTicket({
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
             <TicketFact label="Picture">{plan.videoQuality}</TicketFact>
             <TicketFact label="Per month">{formatCurrency(plan.priceMonthly)}</TicketFact>
-            <TicketFact label="Valid through">{formatDate(subscription.endDate)}</TicketFact>
+            <TicketFact label={cancelled ? "Access until" : "Valid through"}>
+              {formatDate(subscription.endDate)}
+            </TicketFact>
           </dl>
 
           {progress ? (
@@ -89,6 +93,7 @@ export function MembershipTicket({
                 {progress.daysLeft === 0
                   ? "This period ends today."
                   : `${progress.daysLeft} ${progress.daysLeft === 1 ? "day" : "days"} left in this period.`}
+                {cancelled ? " Cancelled, so it won't renew." : null}
               </p>
             </div>
           ) : null}
@@ -123,9 +128,11 @@ export function MembershipTicket({
         </div>
       </article>
 
-      <div className="flex justify-end">
-        <CancelSubscriptionButton subscriptionId={subscription.subscriptionId} label="Cancel plan" />
-      </div>
+      {cancelled ? null : (
+        <div className="flex justify-end">
+          <CancelSubscriptionButton subscriptionId={subscription.subscriptionId} label="Cancel plan" />
+        </div>
+      )}
     </div>
   );
 }

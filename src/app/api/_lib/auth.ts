@@ -5,6 +5,7 @@
  *   const user = await requireUser();                              // 401
  *   const { user, profile } = await requireOwnedProfile(profileId); // 401, 404
  *   const admin = await requireAdmin();                            // 401, 403
+ *   const plan = await requireActivePlan(user);                    // 403 SUBSCRIPTION_REQUIRED
  *   const profile = await getSelectedProfile();                    // never throws: null if none
  *
  * The session cookie is real (src/server/auth/session.ts); the lookups go through the services.
@@ -14,9 +15,10 @@ import { cookies } from "next/headers";
 import { getSessionUserId } from "@/server/auth/session";
 import { PROFILE_COOKIE } from "@/lib/constants";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "@/server/errors";
+import { getActiveSubscription } from "@/server/services/billing.service";
 import { getOwnedProfile } from "@/server/services/profiles.service";
 import { findUserById } from "@/server/services/users.service";
-import type { Profile, User } from "@/types";
+import type { Profile, SubscriptionWithPlan, User } from "@/types";
 
 /** The signed-in user: 401 without a valid session (or when the user no longer exists). */
 export async function requireUser(): Promise<User> {
@@ -31,6 +33,13 @@ export async function requireAdmin(): Promise<User> {
   const user = await requireUser();
   if (user.role !== "ADMIN") throw new ForbiddenError("Admins only.");
   return user;
+}
+
+/** The user's running plan (ACTIVE, or CANCELLED before its end_date): 403 SUBSCRIPTION_REQUIRED without one. */
+export async function requireActivePlan(user: User): Promise<SubscriptionWithPlan> {
+  const subscription = await getActiveSubscription(user.userId);
+  if (!subscription) throw new ForbiddenError("Choose a plan to start watching.", "SUBSCRIPTION_REQUIRED");
+  return subscription;
 }
 
 /**

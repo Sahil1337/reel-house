@@ -264,6 +264,9 @@ export async function explainHomeFeed(profile: Profile): Promise<HomeExplanation
       signals = {
         contentId,
         title: summary?.title ?? `Title ${contentId}`,
+        posterUrl: summary?.posterUrl ?? null,
+        contentType: summary?.contentType ?? "MOVIE",
+        releaseDate: summary?.releaseDate ?? null,
         genres: summary?.genres.map((g) => g.name) ?? [],
         watched: null,
         rating: null,
@@ -299,6 +302,8 @@ export async function explainHomeFeed(profile: Profile): Promise<HomeExplanation
     return {
       contentId: pick.contentId,
       title: summary?.title ?? `Title ${pick.contentId}`,
+      posterUrl: summary?.posterUrl ?? null,
+      contentType: summary?.contentType ?? "MOVIE",
       releaseDate: summary?.releaseDate ?? null,
       genres,
       sum,

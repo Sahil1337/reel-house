@@ -5,7 +5,6 @@ import { Idea01Icon } from "@hugeicons/core-free-icons";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { FilterFunnel } from "@/components/browse/explainer/filter-funnel";
-import { HomeMap } from "@/components/browse/explainer/home-map";
 import {
   buildStrands,
   describeSignals,
@@ -21,10 +20,11 @@ import {
   titleNode,
 } from "@/components/browse/explainer/model";
 import { NumbersTables } from "@/components/browse/explainer/numbers-tables";
+import { PickProof } from "@/components/browse/explainer/pick-proof";
 import { PickScores } from "@/components/browse/explainer/pick-scores";
+import { PipelineStrip } from "@/components/browse/explainer/pipeline-strip";
 import { TasteFlow } from "@/components/browse/explainer/taste-flow";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogDescription,
@@ -35,6 +35,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { useHomeExplanation } from "@/hooks/queries/recommendations";
 import type { HomeExplanation } from "@/types";
 import { cn } from "@/lib/utils";
@@ -86,7 +87,7 @@ function Header({ children }: { children?: ReactNode }) {
           Why these picks?
         </DialogTitle>
         <DialogDescription className="max-sm:hidden">
-          What you did becomes genre taste, genre taste scores every unseen title, the best scores fill Home.
+          What you did becomes genre taste. Taste scores every title you haven&apos;t seen. The best fill Home.
         </DialogDescription>
       </div>
       {children}
@@ -95,6 +96,43 @@ function Header({ children }: { children?: ReactNode }) {
 }
 
 function Explanation({ data }: { data: HomeExplanation }) {
+  const isEmpty = data.signals.length === 0 && data.picks.length === 0;
+  return (
+    <>
+      <Header />
+      <DialogPanel className="flex flex-col gap-6 pt-5">
+        {isEmpty ? (
+          <p className="rounded-lg border border-primary/30 bg-primary/8 p-3 text-sm">
+            No activity and no onboarding picks yet, so every genre scores 0 and so does every title. Ties go to the
+            newest release, so Home shows the newest titles. Watch, rate or save something and this fills in.
+          </p>
+        ) : null}
+
+        <PipelineStrip data={data} />
+
+        <Tabs defaultValue="picks" className="gap-5">
+          <TabsList variant="underline" className="-mx-1">
+            <TabsTab value="picks">Why each pick</TabsTab>
+            <TabsTab value="pipeline">The whole pipeline</TabsTab>
+            <TabsTab value="numbers">Every number</TabsTab>
+          </TabsList>
+          <TabsPanel value="picks">
+            <PickProof data={data} />
+          </TabsPanel>
+          <TabsPanel value="pipeline">
+            <Pipeline data={data} />
+          </TabsPanel>
+          <TabsPanel value="numbers">
+            <NumbersTables data={data} />
+          </TabsPanel>
+        </Tabs>
+      </DialogPanel>
+    </>
+  );
+}
+
+/** The four steps as charts, with a readout that traces whatever is hovered or tapped through all of them. */
+function Pipeline({ data }: { data: HomeExplanation }) {
   const strands = useMemo(() => buildStrands(data), [data]);
   const [hovered, setHovered] = useState<Focus | null>(null);
   const [pinned, setPinned] = useState<Focus | null>(null);
@@ -106,8 +144,8 @@ function Explanation({ data }: { data: HomeExplanation }) {
   const isEmpty = data.signals.length === 0 && data.picks.length === 0;
 
   return (
-    <>
-      <Header>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
         <Legend />
         <Inspector
           data={data}
@@ -116,68 +154,40 @@ function Explanation({ data }: { data: HomeExplanation }) {
           pinned={pinned !== null}
           onClear={() => setPinned(null)}
         />
-      </Header>
-      <DialogPanel className="flex flex-col gap-10 pt-6">
-        {isEmpty ? (
-          <p className="rounded-lg border border-primary/30 bg-primary/8 p-3 text-sm">
-            No activity and no onboarding picks yet, so every genre scores 0 and so does every title. Ties go to the
-            newest release, so Home shows the newest titles. Watch, rate or save something and this fills in.
-          </p>
-        ) : null}
+      </div>
 
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-12">
-          <Step
-            n={1}
-            className="lg:sticky lg:top-0 lg:self-start"
-            title="What you did becomes genre taste"
-            hint="Each title gives its points to every one of its genres. Band thickness = points; a genre's bar adds them up (its taste)."
-          >
-            {isEmpty ? (
-              <Muted>Nothing watched, rated, saved or picked yet.</Muted>
-            ) : (
-              <TasteFlow data={data} strands={strands} lit={lit} onHover={setHovered} onSelect={select} />
-            )}
-          </Step>
-
-          <div className="flex flex-col gap-10">
-            <Step
-              n={2}
-              title="Only unseen, allowed titles are scored"
-              hint="Each filter removes titles before any scoring."
-            >
-              <FilterFunnel filters={data.filters} shown={data.topPicks.length} />
-            </Step>
-            <Step
-              n={3}
-              title="Each title scores SUM(taste) ÷ √genres"
-              hint="Top bar: its genres' taste end to end. Bottom bar: that sum ÷ √(number of genres) = the score."
-            >
-              <p className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
-                Why √: a plain sum lets titles win just by having many genres; a plain average ignores extra genres you
-                like. ÷ √n keeps every liked genre helping, each extra one a little less. Match = 55 + 44 × score ÷
-                best.
-              </p>
-              <PickScores picks={data.topPicks} taste={data.taste} lit={lit} onHover={setHovered} onSelect={select} />
-            </Step>
-          </div>
-        </div>
-
-        <Step n={4} title="The ranked list fills Home" hint="Top to bottom. A title is never shown twice.">
-          <HomeMap data={data} />
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:gap-12">
+        <Step
+          n={1}
+          className="lg:sticky lg:top-0 lg:self-start"
+          title="What you did becomes genre taste"
+          hint="Each title gives its points to every one of its genres. Band thickness = points; a genre's bar adds them up (its taste)."
+        >
+          {isEmpty ? (
+            <Muted>Nothing watched, rated, saved or picked yet.</Muted>
+          ) : (
+            <TasteFlow data={data} strands={strands} lit={lit} onHover={setHovered} onSelect={select} />
+          )}
         </Step>
 
-        <Collapsible className="flex flex-col gap-3 border-t pt-6">
-          <CollapsibleTrigger render={<Button variant="outline" size="sm" className="self-start" />}>
-            Show every number
-          </CollapsibleTrigger>
-          <CollapsiblePanel>
-            <div className="pt-2">
-              <NumbersTables data={data} />
-            </div>
-          </CollapsiblePanel>
-        </Collapsible>
-      </DialogPanel>
-    </>
+        <div className="flex flex-col gap-10">
+          <Step
+            n={2}
+            title="Only unseen, allowed titles are scored"
+            hint="Each filter removes titles before any scoring."
+          >
+            <FilterFunnel filters={data.filters} shown={data.topPicks.length} />
+          </Step>
+          <Step
+            n={3}
+            title="Each title scores SUM(taste) ÷ √genres"
+            hint="Top bar: its genres' taste end to end. Bottom bar: that sum ÷ √genres, so many genres alone can't win."
+          >
+            <PickScores picks={data.topPicks} taste={data.taste} lit={lit} onHover={setHovered} onSelect={select} />
+          </Step>
+        </div>
+      </div>
+    </div>
   );
 }
 

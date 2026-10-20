@@ -14,15 +14,26 @@ export function planFeatures(plan: SubscriptionPlan): string[] {
   ];
 }
 
-export function PlanFeatureList({ plan, className }: { plan: SubscriptionPlan; className?: string }) {
+/** `limit` keeps only the first features: the ones that differ between plans. */
+export function PlanFeatureList({
+  plan,
+  limit,
+  className,
+}: {
+  plan: SubscriptionPlan;
+  limit?: number;
+  className?: string;
+}) {
   return (
     <ul className={cn("flex flex-col gap-2", className)}>
-      {planFeatures(plan).map((feature) => (
-        <li key={feature} className="flex items-start gap-2 text-sm">
-          <HugeiconsIcon icon={Tick02Icon} strokeWidth={2.5} className="mt-0.5 size-4 shrink-0 text-primary" />
-          <span className="text-muted-foreground">{feature}</span>
-        </li>
-      ))}
+      {planFeatures(plan)
+        .slice(0, limit)
+        .map((feature) => (
+          <li key={feature} className="flex items-start gap-2 text-sm">
+            <HugeiconsIcon icon={Tick02Icon} strokeWidth={2.5} className="mt-0.5 size-4 shrink-0 text-primary" />
+            <span className="text-muted-foreground">{feature}</span>
+          </li>
+        ))}
     </ul>
   );
 }

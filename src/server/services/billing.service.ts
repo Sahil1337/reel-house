@@ -18,7 +18,7 @@ import { ConflictError, NotFoundError } from "@/server/errors";
 import type { PaymentWithPlan, Subscription, SubscriptionPlan, SubscriptionWithPlan } from "@/types";
 import { db } from "../db";
 import { subscriptionPlan, subscription, payment } from "../db/schema/billing";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 
 type SubscriptionRow = typeof subscription.$inferSelect;
 
@@ -75,21 +75,24 @@ export async function getPlan(planId: number): Promise<SubscriptionPlan> {
 }
 
 /**
- * The user's current plan, or null when they have none (the account page then offers plans).
+ * The user's current plan, or null when they have none (the account page then offers plans). A plan the user
+ * cancelled still counts until its paid end_date, and one past end_date doesn't, whatever its status — so
+ * expiry needs no job.
  *
  * Steps:
- *   1. Select the user's ACTIVE subscription joined with its plan.
+ *   1. Select the user's ACTIVE or CANCELLED subscription whose paid period is still running, joined with its plan.
  * SQL:
  *   SELECT s.*, p.*
  *   FROM subscription s
  *   JOIN subscription_plan p USING (plan_id)
- *   WHERE s.user_id = $1 AND s.status = 'ACTIVE';
+ *   WHERE s.user_id = $1 AND s.status IN ('ACTIVE', 'CANCELLED') AND s.end_date > now()
+ *   ORDER BY s.status = 'ACTIVE' DESC, s.end_date DESC
+ *   LIMIT 1;
  * Tables: subscription, subscription_plan
- * Keys/constraints relied on: partial UNIQUE index subscription_one_active_per_user
- *   ON subscription (user_id) WHERE status = 'ACTIVE' — at most one row.
+ * Keys/constraints relied on: subscription_dates_check — unpaid CANCELLED checkouts have a NULL end_date, so
+ *   they never match; a plan switch cuts the old row's end_date to now() (payments.service), so one row runs.
  * Transaction: no  ·  Idempotent: yes (read)
- * Edge cases: an ACTIVE row whose end_date has passed is still returned until an expiry job (or the
- *   next capture) flips it to EXPIRED; the page shows end_date.
+ * Edge cases: an ACTIVE row past end_date stays ACTIVE in the table but isn't returned (lapsed).
  * Throws: nothing
  * Called by: GET /api/account
  * Returns: the subscription with its plan, dates as ISO strings; null when there is none.
@@ -99,7 +102,14 @@ export async function getActiveSubscription(userId: number): Promise<Subscriptio
     .select()
     .from(subscription)
     .innerJoin(subscriptionPlan, eq(subscription.planId, subscriptionPlan.planId))
-    .where(and(eq(subscription.userId, userId), eq(subscription.status, "ACTIVE")))
+    .where(
+      and(
+        eq(subscription.userId, userId),
+        inArray(subscription.status, ["ACTIVE", "CANCELLED"]),
+        gt(subscription.endDate, sql`now()`),
+      ),
+    )
+    .orderBy(desc(sql`${subscription.status} = 'ACTIVE'`), desc(subscription.endDate))
     .limit(1);
 
   if (!active) {
@@ -232,8 +242,9 @@ export async function createPendingSubscription(userId: number, planId: number):
 }
 
 /**
- * The user cancels their current plan (ACTIVE). Its paid dates are kept. Unpaid checkouts (PENDING) can't
- * be cancelled — they stay PENDING.
+ * The user cancels their current plan (ACTIVE). Its paid dates are kept, so they keep watching until end_date
+ * (getActiveSubscription still returns it); there is no refund. Unpaid checkouts (PENDING) can't be
+ * cancelled — they stay PENDING.
  *
  * Steps:
  *   1. Update the row if it belongs to the user and is ACTIVE.

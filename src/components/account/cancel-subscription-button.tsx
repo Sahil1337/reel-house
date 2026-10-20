@@ -22,7 +22,7 @@ export function CancelSubscriptionButton({
     setLoading(true);
     try {
       await api.cancelSubscription(subscriptionId);
-      toast.success("Subscription cancelled");
+      toast.success("Subscription cancelled", { description: "You can keep watching until the paid period ends." });
       router.refresh();
     } catch (error) {
       toast.error("Couldn't cancel", {
