@@ -24,6 +24,3 @@ export const PAYMENT_MODE_LABELS: Record<PaymentMode, string> = {
 };
 
 export const TMDB_ATTRIBUTION = "This product uses the TMDB API but is not endorsed or certified by TMDB.";
-
-/** Toast description for admin writes while the services are mocks (nothing is persisted). */
-export const DEMO_WRITE_NOTE = "Demo data — not saved until the backend is implemented.";

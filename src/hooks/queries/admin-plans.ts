@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { ApiError, api } from "@/lib/api/client";
-import { DEMO_WRITE_NOTE } from "@/lib/constants";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { AdminPlan, CreatePlanInput, UpdatePlanInput } from "@/types";
 
@@ -24,11 +23,7 @@ export function useAdminPlans(initialData?: AdminPlan[]) {
 
 /**
  * The shared shape of the three plan mutations: optimistic patch of the cached list on mutate, rollback on
- * error, and the list marked stale (not refetched) when it settles.
- *
- * Nothing is persisted while the services are mocks, so a refetch right after the write would put the old
- * rows back over the optimistic change. `refetchType: "none"` only marks the list stale. With a real backend
- * you would refetch here (drop `refetchType`) so the list shows what the database holds.
+ * error, and the list refetched when it settles so it shows what the database holds.
  */
 function usePlanCache() {
   const queryClient = useQueryClient();
@@ -49,7 +44,7 @@ function usePlanCache() {
       queryClient.setQueryData<AdminPlan[]>(key, (plans) => plans?.map((entry) => (match(entry) ? plan : entry)));
     },
     settle() {
-      void queryClient.invalidateQueries({ queryKey: key, refetchType: "none" });
+      void queryClient.invalidateQueries({ queryKey: key });
     },
   };
 }
@@ -72,7 +67,7 @@ export function useCreatePlan() {
     },
     onSuccess: (plan, _input, context) => {
       cache.replace((entry) => entry.planId === context.tempId, plan);
-      toast.success(`Added the ${plan.name} plan`, { description: DEMO_WRITE_NOTE });
+      toast.success(`Added the ${plan.name} plan`);
     },
     onSettled: cache.settle,
   });
@@ -94,7 +89,7 @@ export function useUpdatePlan() {
     },
     onSuccess: (plan) => {
       cache.replace((entry) => entry.planId === plan.planId, plan);
-      toast.success(`Saved the ${plan.name} plan`, { description: DEMO_WRITE_NOTE });
+      toast.success(`Saved the ${plan.name} plan`);
     },
     onSettled: cache.settle,
   });
@@ -114,7 +109,7 @@ export function useDeletePlan() {
       toast.error("Couldn't delete the plan", { description: messageOf(error) });
     },
     onSuccess: () => {
-      toast.success("Plan deleted", { description: DEMO_WRITE_NOTE });
+      toast.success("Plan deleted");
     },
     onSettled: cache.settle,
   });

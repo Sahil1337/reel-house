@@ -40,7 +40,7 @@ export async function GET() {
  * Response: 201 CheckoutOrder { subscriptionId, orderId, amount (paise), currency: "INR", keyId }
  *             -> the client opens Razorpay Checkout with orderId + keyId (src/components/account/change-plan.tsx),
  *               posts the success response to /api/payments/verify, then polls GET /api/account until
- *               the plan shows ACTIVE. While this is a stub, keyId is null and the client skips Checkout.
+ *               the plan shows ACTIVE.
  *           401 { error } signed out · 404 { error } unknown plan · 422 { error } planId isn't a positive integer
  *           409 { error } already ACTIVE on that plan (unless renewing)
  *           503 { error } RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set · 502 { error } Razorpay failed

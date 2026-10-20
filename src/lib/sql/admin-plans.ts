@@ -89,7 +89,7 @@ export function buildDeletePlanSql(planId: number, inUseCount: number): SqlState
       step: 1,
       title: "Delete the plan",
       explanation: blocked
-        ? `subscription.plan_id references subscription_plan ON DELETE RESTRICT, and ${inUseCount} subscription${inUseCount === 1 ? "" : "s"} still point here, so PostgreSQL refuses with a foreign-key violation (23503) and the API answers 409.`
+        ? `subscription.plan_id references subscription_plan ON DELETE RESTRICT, and ${inUseCount} subscription${inUseCount === 1 ? "" : "s"} still point here, so PostgreSQL refuses with a restrict violation (23001) and the API answers 409.`
         : "No subscription references this plan, so the RESTRICT foreign key lets the delete through.",
       sql: "DELETE FROM subscription_plan\nWHERE plan_id = $1;",
       params: [planId],

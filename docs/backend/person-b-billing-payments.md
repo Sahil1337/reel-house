@@ -86,10 +86,10 @@ Work through these in order. Each step builds on the one before it.
 - [ ] **6. `verifyPaymentSignature`, `fetchPayment`**.
 - [ ] **7. `recordCapturedPayment`** (the core transaction) and `recordFailedPayment`.
 - [ ] **8. `verifyWebhookSignature`, `parseWebhookEvent`**; end-to-end test with test cards and UPI; replay a webhook (idempotency).
-- [ ] **9. Admin plans** (section 6): `listPlansWithStats`, `createPlan`, `updatePlan`, `deletePlan`. The admin Plans page lists, adds, edits; delete answers 409 `PLAN_IN_USE` for plans 1 and 2 and 204 for an unused one.
-- [ ] **10. Admin subscriptions list**: `listAllSubscriptions` (join, status filter, escaped email search, pagination with a separate count).
-- [ ] **11. Admin subscription actions**: `adminCancelSubscription`, `adminExtendSubscription`, `adminChangeSubscriptionPlan` (ACTIVE only, 404 vs 409, no `payment` writes).
-- [ ] **12. Cleanup**: remove `getMockDb`/`find*`/`withPlan` imports from your files (all four services); lint; build; update route comments that changed (`POST /api/account/subscriptions` 409 text).
+- [x] **9. Admin plans** (section 6): `listPlansWithStats`, `createPlan`, `updatePlan`, `deletePlan`. The admin Plans page lists, adds, edits; delete answers 409 `PLAN_IN_USE` for plans 1 and 2 and 204 for an unused one.
+- [x] **10. Admin subscriptions list**: `listAllSubscriptions` (join, status filter, escaped email search, pagination with a separate count).
+- [x] **11. Admin subscription actions**: `adminCancelSubscription`, `adminExtendSubscription`, `adminChangeSubscriptionPlan` (ACTIVE only, 404 vs 409, no `payment` writes).
+- [x] **12. Cleanup**: remove `getMockDb`/`find*`/`withPlan` imports from your files (all four services); lint; build; update route comments that changed (`POST /api/account/subscriptions` 409 text).
 
 ---
 
@@ -756,7 +756,7 @@ RETURNING plan_id, name, price_monthly, video_quality, max_devices;
 
 **Steps:**
 
-1. Run the `DELETE`. Let PostgreSQL refuse it if a subscription references the plan (foreign-key error 23503).
+1. Run the `DELETE`. Let PostgreSQL refuse it if a subscription references the plan (restrict violation 23001).
 2. If it refused, count the subscriptions only to build the error message.
 3. If no row was deleted and there was no FK error, the plan does not exist.
 
@@ -764,15 +764,15 @@ RETURNING plan_id, name, price_monthly, video_quality, max_devices;
 
 ```sql
 DELETE FROM subscription_plan WHERE plan_id = $1;
--- only after a 23503, to build the message:
+-- only after a 23001, to build the message:
 SELECT COUNT(*) AS subscriptions FROM subscription WHERE plan_id = $1;
 ```
 
 **Rules to respect:**
 
-- Tables and keys: `subscription_plan` (write), `subscription` (read for the message). FK `subscription.plan_id -> subscription_plan ON DELETE RESTRICT` (23503). PK `plan_id`.
+- Tables and keys: `subscription_plan` (write), `subscription` (read for the message). FK `subscription.plan_id -> subscription_plan ON DELETE RESTRICT` (23001). PK `plan_id`.
 - `ON DELETE RESTRICT` means PostgreSQL itself refuses to delete a plan that any subscription points at, in **any** status (an ACTIVE one, or one that expired two years ago). Billing history must keep its plan name, which is why the FK is RESTRICT and not CASCADE (delete the children too) or SET NULL.
-- The implementation catches the foreign-key violation (pg `23503`) and answers 409. It does **not** pre-count and decide from the count, because a subscription created between "count = 0" and the `DELETE` would then surface as a 500. The count query only fills in the message and may be slightly stale.
+- The implementation catches the RESTRICT violation (pg `23001`, not the 23503 a NO ACTION key raises) and answers 409. It does **not** pre-count and decide from the count, because a subscription created between "count = 0" and the `DELETE` would then surface as a 500. The count query only fills in the message and may be slightly stale.
 - Transaction: no (the `DELETE` is atomic). Idempotent: yes in effect (a second call answers 404).
 - A plan with only EXPIRED, CANCELLED or PENDING subscriptions is still blocked. Retire a plan by renaming it (or a future `archived` flag), not by deleting it.
 - Deleting never touches `payment`.

@@ -44,7 +44,7 @@ function toSubscription(row: SubscriptionRow): Subscription {
  * Edge cases: none; the table is small and seeded.
  * Throws: nothing
  * Called by: GET /api/plans
- * Mock today: returns every plan in data/mock/plans.json order (not re-sorted).
+ * Returns: plans as SubscriptionPlan, priceMonthly as a number.
  */
 export async function listPlans(): Promise<SubscriptionPlan[]> {
   const plans = await db.select().from(subscriptionPlan).orderBy(subscriptionPlan.priceMonthly);
@@ -63,8 +63,7 @@ export async function listPlans(): Promise<SubscriptionPlan[]> {
  * Edge cases: the amount charged always comes from this row, never from the client.
  * Throws: NotFoundError("Plan not found.") when there is no such plan (the old route contract: 404).
  * Called by: POST /api/account/subscriptions
- * Mock today: finds the plan in data/mock/plans.json; throws NotFoundError when unknown (the old stub
- *   did not check and answered with amount 0).
+ * Returns: the plan as SubscriptionPlan, priceMonthly as a number.
  */
 export async function getPlan(planId: number): Promise<SubscriptionPlan> {
   const [plan] = await db.select().from(subscriptionPlan).where(eq(subscriptionPlan.planId, planId)).limit(1);
@@ -93,7 +92,7 @@ export async function getPlan(planId: number): Promise<SubscriptionPlan> {
  *   next capture) flips it to EXPIRED; the page shows end_date.
  * Throws: nothing
  * Called by: GET /api/account
- * Mock today: the first ACTIVE subscription of the user in data/mock/subscriptions.json, with its plan.
+ * Returns: the subscription with its plan, dates as ISO strings; null when there is none.
  */
 export async function getActiveSubscription(userId: number): Promise<SubscriptionWithPlan | null> {
   const [active] = await db
@@ -134,7 +133,7 @@ export async function getActiveSubscription(userId: number): Promise<Subscriptio
  * Edge cases: never paid → stays PENDING (start/end dates NULL) until paid or cancelled by the user.
  * Throws: nothing
  * Called by: GET /api/account/subscriptions
- * Mock today: every subscription of the user in file order (no start_date filter, no sort), with its plan.
+ * Returns: every subscription with its plan, newest first, dates as ISO strings (null while PENDING).
  */
 export async function listSubscriptions(userId: number): Promise<SubscriptionWithPlan[]> {
   const rows = await db
@@ -173,7 +172,7 @@ export async function listSubscriptions(userId: number): Promise<SubscriptionWit
  * Edge cases: a failed attempt on an abandoned (PENDING/CANCELLED) subscription still shows up.
  * Throws: nothing
  * Called by: GET /api/account/payments
- * Mock today: payments of the user's subscriptions in file order, each with planName.
+ * Returns: payments with planName, amount as a number, paymentDate as an ISO string.
  */
 export async function listPayments(userId: number): Promise<PaymentWithPlan[]> {
   const rows = await db

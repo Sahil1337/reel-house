@@ -1,5 +1,5 @@
 /**
- * Shapes shared by scripts/import-tmdb.mts, the admin TMDB routes and src/server/mocks.
+ * Shapes shared by scripts/import-tmdb.mts, and the admin TMDB routes.
  *
  *   Snapshot*  what the importer writes to data/tmdb/*.json (and what the admin preview shows)
  *   Tmdb*      the subset of TMDB's API responses we read

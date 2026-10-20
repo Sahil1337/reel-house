@@ -1,5 +1,5 @@
 /**
- * Browser side of Razorpay Checkout (the server side is the stubbed /api/account/subscriptions and /api/payments/* routes). The script is loaded with
+ * Browser side of Razorpay Checkout (the server side is /api/account/subscriptions and /api/payments/*). The script is loaded with
  * next/script only where a plan can be bought (src/components/account/change-plan.tsx); it defines
  * window.Razorpay. Options and callbacks:
  * https://razorpay.com/docs/payments/payment-gateway/web-integration/standard/integration-steps/

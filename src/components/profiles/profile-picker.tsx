@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Add01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
-import { toast } from "sonner";
 
 import { Spinner } from "@/components/ui/spinner";
 import { useProfileList } from "@/hooks/queries/profiles";
@@ -45,13 +44,6 @@ export function ProfilePicker({ profiles: initialProfiles, manage }: { profiles:
 
   function select(profile: Profile) {
     if (selectingId !== null) return;
-    // TODO(backend): drop this guard once POST /api/profiles persists new profiles.
-    if (!initialProfiles.some((saved) => saved.profileId === profile.profileId)) {
-      toast.info(`${profile.name} isn't saved yet`, {
-        description: "Demo mode: new profiles can't be opened until the backend exists.",
-      });
-      return;
-    }
     setSelectingId(profile.profileId);
     setProfileCookie(profile.profileId);
     router.push(profile.onboardingCompleted ? "/browse" : "/onboarding");

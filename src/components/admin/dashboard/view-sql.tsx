@@ -60,7 +60,7 @@ export function ViewSql({ title, widget }: { title: string; widget: DashboardWid
             <div className="flex items-baseline justify-between gap-3">
               <h3 className="text-sm font-medium">Result</h3>
               <span className="text-xs text-muted-foreground">
-                {rows.length} {rows.length === 1 ? "row" : "rows"} · mock data until the backend runs this query
+                {rows.length} {rows.length === 1 ? "row" : "rows"}
               </span>
             </div>
             <div className="overflow-x-auto rounded-lg border">

@@ -75,8 +75,6 @@ export function ChangePlan({
 
   // Once the activation poll settles the dialog shows the active plan, or falls back to "received" if the plan
   // never turned ACTIVE.
-  // TODO(backend): with the stubs nothing is persisted, so the plan never turns ACTIVE and we always end in
-  // "received". Once verify / the webhook write the payment (src/app/api/payments/*), the poll finds it.
   const view: Phase =
     phase.step === "confirming" && poll.settled
       ? poll.subscription
@@ -108,17 +106,6 @@ export function ChangePlan({
       order = await startCheckout({ planId: plan.planId });
     } catch (error) {
       setPhase({ step: "confirm", notice: { tone: "error", message: checkoutErrorMessage(error) } });
-      return;
-    }
-
-    // TODO(backend): the checkout stub returns no Razorpay key, so there is no real order to pay; skip
-    // Checkout and go straight to verify. Once POST /api/account/subscriptions creates real orders, keyId is set.
-    if (!order.keyId) {
-      void confirmPayment(plan, order, {
-        razorpay_order_id: order.orderId,
-        razorpay_payment_id: order.orderId.replace("order_", "pay_"),
-        razorpay_signature: "demo",
-      });
       return;
     }
 
@@ -195,29 +182,29 @@ export function ChangePlan({
     <>
       <Script src={RAZORPAY_CHECKOUT_SRC} onError={() => setScriptFailed(true)} />
 
-      <ul className="grid gap-4 md:grid-cols-3">
+      <ul className="grid grid-cols-[repeat(auto-fit,minmax(15rem,1fr))] gap-4 lg:gap-5">
         {plans.map((plan) => {
           const isCurrent = current?.planId === plan.planId;
           return (
             <li
               key={plan.planId}
               className={cn(
-                "flex flex-col gap-5 rounded-2xl border bg-card p-5",
-                isCurrent && "border-primary/40 ring-1 ring-primary/20",
+                "flex flex-col gap-5 rounded-2xl border bg-card p-6",
+                isCurrent && "border-primary/50 bg-primary/[0.04]",
               )}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <h3 className="font-display text-2xl font-bold uppercase leading-none tracking-wide">{plan.name}</h3>
-                  <p className="flex items-baseline gap-1">
-                    <span className="font-mono text-lg font-semibold tabular-nums">
-                      {formatCurrency(plan.priceMonthly)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">/month</span>
-                  </p>
-                </div>
+                <h3 className="font-display text-3xl leading-none font-bold tracking-wide uppercase">{plan.name}</h3>
                 {isCurrent ? <Badge variant="outline">Current plan</Badge> : null}
               </div>
+              <p className="flex items-baseline gap-1">
+                <span className="font-mono text-3xl font-semibold tabular-nums">
+                  {formatCurrency(plan.priceMonthly)}
+                </span>
+                <span className="text-sm text-muted-foreground">/month</span>
+              </p>
+              {/* The same tear line as the membership ticket: what you get sits below it. */}
+              <div aria-hidden="true" className="border-t-2 border-dashed" />
               <PlanFeatureList plan={plan} />
               <Button
                 variant={isCurrent ? "outline" : "default"}

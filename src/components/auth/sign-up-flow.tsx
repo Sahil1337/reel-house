@@ -143,11 +143,7 @@ export function SignUpFlow() {
 
           {formError ? <FormAlert>{formError}</FormAlert> : null}
 
-          <p className="text-xs text-muted-foreground">
-            You&rsquo;ll pick a plan from your account after signing in.{" "}
-            <span className="font-medium text-foreground">Demo mode</span> — new accounts aren&rsquo;t saved yet;
-            you&rsquo;ll sign in with the demo account next.
-          </p>
+          <p className="text-xs text-muted-foreground">You&rsquo;ll pick a plan from your account after signing up.</p>
 
           <Button type="submit" size="lg" loading={pending} className={cn("w-full", PRESS)}>
             Create account

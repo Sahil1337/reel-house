@@ -4,7 +4,6 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { toast } from "sonner";
 
 import { ApiError, api } from "@/lib/api/client";
-import { DEMO_WRITE_NOTE } from "@/lib/constants";
 import { queryKeys } from "@/lib/api/query-keys";
 import type { AdminContentFilters, AdminContentRow, AdminPage, ContentDetail, UpdateContentInput } from "@/types";
 
@@ -76,12 +75,9 @@ function restore(queryClient: QueryClient, snapshots: ListSnapshot | undefined) 
   for (const [key, data] of snapshots ?? []) queryClient.setQueryData(key, data);
 }
 
-/**
- * The mocks don't persist, so a refetch would bring a removed row back. Mark the pages stale without
- * refetching. With a real backend, drop `refetchType: "none"` to refetch the visible page.
- */
-function markListsStale(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({ queryKey: queryKeys.admin.content.lists(), refetchType: "none" });
+/** Refetches the visible page so it shows what the database holds once a write settles. */
+function refetchLists(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({ queryKey: queryKeys.admin.content.lists() });
 }
 
 const messageOf = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
@@ -108,9 +104,9 @@ export function useDeleteContent() {
       toast.error(`Couldn't remove ${title}`, { description: messageOf(error, "Try again.") });
     },
     onSuccess: (_data, { title }) => {
-      toast.success(`Removed ${title}`, { description: DEMO_WRITE_NOTE });
+      toast.success(`Removed ${title}`);
     },
-    onSettled: () => markListsStale(queryClient),
+    onSettled: () => refetchLists(queryClient),
   });
 }
 
@@ -151,8 +147,8 @@ export function useUpdateContent() {
       queryClient.setQueriesData<ContentPage>({ queryKey: queryKeys.admin.content.lists() }, (page) =>
         page ? { ...page, items: page.items.map((row) => (row.contentId === contentId ? content : row)) } : page,
       );
-      toast.success(`Saved ${content.title}`, { description: DEMO_WRITE_NOTE });
+      toast.success(`Saved ${content.title}`);
     },
-    onSettled: () => markListsStale(queryClient),
+    onSettled: () => refetchLists(queryClient),
   });
 }

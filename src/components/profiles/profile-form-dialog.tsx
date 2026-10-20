@@ -48,6 +48,9 @@ const MATURITY_LEVELS = Object.keys(MATURITY_LABELS) as MaturityLevel[];
 
 const NEW_PROFILE: ProfileInput = { name: "", avatar: "reel", maturityLevel: "ADULT" };
 
+/** The team's names, one shown per open as the name field's example. */
+const EXAMPLE_NAMES = ["Sahil", "Yash", "Tejasva"];
+
 /**
  * Create or edit a profile. `profile` null means "create".
  * The dialog body unmounts on close, so every open starts from fresh state.
@@ -95,6 +98,8 @@ function ProfileForm({
         }
       : NEW_PROFILE,
   );
+  // Picked once per open (the body remounts), so the example doesn't change while typing.
+  const [exampleName] = useState(() => EXAMPLE_NAMES[Math.floor(Math.random() * EXAMPLE_NAMES.length)]);
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const saveProfile = useSaveProfile();
@@ -162,7 +167,7 @@ function ProfileForm({
             name="profile-name"
             autoComplete="off"
             maxLength={24}
-            placeholder="e.g. Kabir"
+            placeholder={`e.g. ${exampleName}`}
             value={fields.name}
             onValueChange={(value) => update("name", value)}
           />

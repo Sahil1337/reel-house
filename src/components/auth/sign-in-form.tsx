@@ -15,7 +15,10 @@ import { signInSchema } from "@/lib/validation/auth";
 import { FormAlert } from "./form-alert";
 import { PasswordInput } from "./password-input";
 
-const DEMO = { email: "demo@reelhouse.dev", password: "demo1234" };
+const DEMO_ACCOUNTS = [
+  { label: "Use demo account", email: "demo@reelhouse.dev", password: "demo1234" },
+  { label: "Use admin account", email: "admin@reelhouse.dev", password: "admin1234" },
+] as const;
 
 type FieldErrors = Partial<Record<"email" | "password", string>>;
 
@@ -50,9 +53,9 @@ export function SignInForm({ next }: { next: string | null }) {
     }
   }
 
-  function fillDemoAccount() {
-    setEmail(DEMO.email);
-    setPassword(DEMO.password);
+  function fillDemoAccount(account: (typeof DEMO_ACCOUNTS)[number]) {
+    setEmail(account.email);
+    setPassword(account.password);
     setFieldErrors({});
     setFormError(null);
   }
@@ -110,13 +113,16 @@ export function SignInForm({ next }: { next: string | null }) {
           </Button>
         </form>
 
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
-          <p>
-            Trying it out? Use <span className="font-mono text-foreground">{DEMO.email}</span>
-          </p>
-          <Button size="xs" variant="outline" onClick={fillDemoAccount}>
-            Use demo account
-          </Button>
+        <div className="mt-4 flex flex-col gap-2 rounded-lg border border-dashed px-3 py-2.5 text-xs text-muted-foreground">
+          <p>Trying it out? Use one of these:</p>
+          {DEMO_ACCOUNTS.map((account) => (
+            <div key={account.email} className="flex items-center justify-between gap-3">
+              <span className="font-mono text-foreground">{account.email}</span>
+              <Button size="xs" variant="outline" onClick={() => fillDemoAccount(account)}>
+                {account.label}
+              </Button>
+            </div>
+          ))}
         </div>
       </CardPanel>
       <CardFooter className="justify-center border-t text-sm text-muted-foreground">

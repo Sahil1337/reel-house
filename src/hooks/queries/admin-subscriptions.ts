@@ -4,7 +4,6 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { toast } from "sonner";
 
 import { ApiError, api } from "@/lib/api/client";
-import { DEMO_WRITE_NOTE } from "@/lib/constants";
 import { queryKeys } from "@/lib/api/query-keys";
 import type {
   AdminPage,
@@ -74,11 +73,7 @@ const ACTION_TITLES: Record<AdminSubscriptionAction["action"], { done: string; f
 /**
  * Cancel, extend or change the plan of one subscription. The row is patched at once in every cached page of
  * the table and restored if the request fails (the mutation then rejects, so the dialog can show the
- * message inline: 409 SUBSCRIPTION_NOT_ACTIVE, PLAN_UNCHANGED, 404…).
- *
- * Nothing is persisted while the services are mocks, so a refetch after the write would put the old rows back
- * over the optimistic change. `refetchType: "none"` only marks the pages stale. With a real backend you would
- * refetch here (drop `refetchType`) so the table shows what the database holds.
+ * message inline: 409 SUBSCRIPTION_NOT_ACTIVE, PLAN_UNCHANGED, 404…). The pages are refetched when it settles.
  */
 export function useSubscriptionAction() {
   const queryClient = useQueryClient();
@@ -117,10 +112,10 @@ export function useSubscriptionAction() {
             items: page.items.map((row) => (row.subscriptionId === subscription.subscriptionId ? subscription : row)),
           },
       );
-      toast.success(ACTION_TITLES[action.action].done, { description: DEMO_WRITE_NOTE });
+      toast.success(ACTION_TITLES[action.action].done);
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: lists, refetchType: "none" });
+      void queryClient.invalidateQueries({ queryKey: lists });
     },
   });
 }

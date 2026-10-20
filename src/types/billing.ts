@@ -62,8 +62,8 @@ export interface CheckoutOrder {
   /** In paise. */
   amount: number;
   currency: string;
-  /** RAZORPAY_KEY_ID — public by design; the secret stays on the server. null while checkout is a stub. */
-  keyId: string | null;
+  /** RAZORPAY_KEY_ID — public by design; the secret stays on the server. */
+  keyId: string;
 }
 
 /** POST /api/payments/verify body: Razorpay Checkout's success-handler response, as is. */
