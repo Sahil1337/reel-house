@@ -9,17 +9,16 @@
  *           409 { error } "That email is already registered."
  *           422 { error } name < 2 chars, invalid email, phone too long, password < 8 chars
  *
- * No session is started yet: the demo's createUser persists nothing, so the new user doesn't
- * really exist and the frontend sends them to /sign-in. The real implementation calls
- * startSession(user.userId) (src/server/auth/session.ts, as sign-in does) right after createUser,
- * and the frontend can then go straight to /profiles.
+ * Starts a session for the newly created user (startSession) so the user is signed in and lands
+ * directly on /profiles.
  *
- * Calls: hashPassword (src/server/auth/password.ts, scrypt — or bcrypt/argon2 on upgrade) → createUser (users.service)
+ * Calls: hashPassword (src/server/auth/password.ts, scrypt) → createUser (users.service) → startSession (src/server/auth/session.ts)
  */
 import { z } from "zod";
 
 import { handleError, parseBody } from "@/app/api/_lib/http";
 import { hashPassword } from "@/server/auth/password";
+import { startSession } from "@/server/auth/session";
 import { createUser } from "@/server/services/users.service";
 
 const signUpSchema = z.object({
@@ -33,6 +32,7 @@ export async function POST(request: Request) {
   try {
     const { name, email, phone, password } = await parseBody(request, signUpSchema);
     const user = await createUser({ name, email, phone: phone || null, passwordHash: await hashPassword(password) });
+    await startSession(user.userId);
     return Response.json({ user }, { status: 201 });
   } catch (error) {
     return handleError(error);

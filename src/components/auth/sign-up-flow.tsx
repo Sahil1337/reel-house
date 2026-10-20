@@ -53,11 +53,8 @@ export function SignUpFlow() {
     setFormError(null);
     try {
       await mutateAsync({ name: name.trim(), email: email.trim(), phone: phone.trim() || null, password });
-      // TODO(backend): go straight to /profiles once POST /api/auth/sign-up creates the account and session.
-      toast.info("Demo mode: accounts aren't saved yet", {
-        description: "Sign in with the demo account to look around.",
-      });
-      router.push("/sign-in");
+      toast.success("Account created!");
+      router.push("/profiles");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Couldn't create your account. Try again.");
     }
