@@ -100,32 +100,35 @@ function Explanation({ data }: { data: HomeExplanation }) {
   return (
     <>
       <Header />
-      <DialogPanel className="flex flex-col gap-6 pt-5">
-        {isEmpty ? (
-          <p className="rounded-lg border border-primary/30 bg-primary/8 p-3 text-sm">
-            No activity and no onboarding picks yet, so every genre scores 0 and so does every title. Ties go to the
-            newest release, so Home shows the newest titles. Watch, rate or save something and this fills in.
-          </p>
-        ) : null}
+      {/* Spacing lives on an inner div: DialogPanel's own pt-1 variant out-specifies padding passed to it. */}
+      <DialogPanel>
+        <div className="flex flex-col gap-4 pt-5">
+          {isEmpty ? (
+            <p className="rounded-lg border border-primary/30 bg-primary/8 p-3 text-sm">
+              No activity and no onboarding picks yet, so every genre scores 0 and so does every title. Ties go to the
+              newest release, so Home shows the newest titles. Watch, rate or save something and this fills in.
+            </p>
+          ) : null}
 
-        <PipelineStrip data={data} />
+          <PipelineStrip data={data} />
 
-        <Tabs defaultValue="picks" className="gap-5">
-          <TabsList variant="underline" className="-mx-1">
-            <TabsTab value="picks">Why each pick</TabsTab>
-            <TabsTab value="pipeline">The whole pipeline</TabsTab>
-            <TabsTab value="numbers">Every number</TabsTab>
-          </TabsList>
-          <TabsPanel value="picks">
-            <PickProof data={data} />
-          </TabsPanel>
-          <TabsPanel value="pipeline">
-            <Pipeline data={data} />
-          </TabsPanel>
-          <TabsPanel value="numbers">
-            <NumbersTables data={data} />
-          </TabsPanel>
-        </Tabs>
+          <Tabs defaultValue="picks" className="gap-5">
+            <TabsList variant="underline" className="-mx-1">
+              <TabsTab value="picks">Why each pick</TabsTab>
+              <TabsTab value="pipeline">The whole pipeline</TabsTab>
+              <TabsTab value="numbers">Every number</TabsTab>
+            </TabsList>
+            <TabsPanel value="picks">
+              <PickProof data={data} />
+            </TabsPanel>
+            <TabsPanel value="pipeline">
+              <Pipeline data={data} />
+            </TabsPanel>
+            <TabsPanel value="numbers">
+              <NumbersTables data={data} />
+            </TabsPanel>
+          </Tabs>
+        </div>
       </DialogPanel>
     </>
   );

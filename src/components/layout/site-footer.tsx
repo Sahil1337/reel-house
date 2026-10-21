@@ -9,7 +9,7 @@ export function SiteFooter({ className }: { className?: string }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <LogoMark className="size-4" />
-          <span>Reelhouse — a DBMS course project. Streaming is simulated.</span>
+          <span>Reelhouse</span>
         </div>
         <p className="max-w-md text-xs sm:text-right">
           Film and series data from{" "}
