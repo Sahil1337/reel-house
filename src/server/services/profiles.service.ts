@@ -9,7 +9,7 @@
  * Exports:
  *   listProfiles(userId)                         — the account's profiles
  *   getOwnedProfile(userId, profileId)           — one profile, only if it belongs to the user
- *   createProfile(userId, input)                 — add a profile (limit 5, unique name)
+ *   createProfile(userId, input)                 — add a profile (plan's max_profiles, unique name)
  *   updateProfile(userId, profileId, changes)    — rename / avatar / maturity
  *   deleteProfile(userId, profileId)             — remove a profile and its activity
  *   getGenrePreferences(profileId)               — saved onboarding genre ids
@@ -19,7 +19,7 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 
-import { MAX_PROFILES, ONBOARDING_MIN_GENRES } from "@/lib/constants";
+import { NO_PLAN_MAX_PROFILES, ONBOARDING_MIN_GENRES } from "@/lib/constants";
 import { db } from "@/server/db";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/errors";
 import type { AvatarKey, MaturityLevel, Profile, ProfileInput } from "@/types";
@@ -81,10 +81,16 @@ export async function getOwnedProfile(userId: number, profileId: number): Promis
 }
 
 /**
- * Adds a profile to the account. Enforces the 5-profile limit and case-insensitive unique name per account.
+ * Adds a profile to the account. Enforces the current plan's max_profiles (NO_PLAN_MAX_PROFILES without a plan)
+ * and case-insensitive unique name per account.
  *
  * SQL:
  *   SELECT user_id FROM users WHERE user_id = $1 FOR UPDATE;
+ *   SELECT p.max_profiles
+ *   FROM subscription s JOIN subscription_plan p USING (plan_id)
+ *   WHERE s.user_id = $1 AND s.status IN ('ACTIVE', 'CANCELLED') AND s.end_date > now()
+ *   ORDER BY s.status = 'ACTIVE' DESC, s.end_date DESC
+ *   LIMIT 1;
  *   SELECT COUNT(*) FROM profile WHERE user_id = $1;
  *   INSERT INTO profile (user_id, name, avatar, maturity_level)
  *   VALUES ($1, $2, $3, $4)
@@ -96,9 +102,19 @@ export async function createProfile(userId: number, input: ProfileInput): Promis
     const countResult = await tx.execute<{ count: number }>(sql`
       SELECT COUNT(*) AS count FROM profile WHERE user_id = ${userId};
     `);
+    // Same "current plan" rule as billing.service getActiveSubscription: a cancelled plan counts until end_date.
+    const limitResult = await tx.execute<{ max_profiles: number }>(sql`
+      SELECT p.max_profiles
+      FROM subscription AS s
+      JOIN subscription_plan AS p USING (plan_id)
+      WHERE s.user_id = ${userId} AND s.status IN ('ACTIVE', 'CANCELLED') AND s.end_date > now()
+      ORDER BY s.status = 'ACTIVE' DESC, s.end_date DESC
+      LIMIT 1;
+    `);
+    const limit = limitResult.rows[0]?.max_profiles ?? NO_PLAN_MAX_PROFILES;
     const count = Number(countResult.rows[0]?.count ?? 0);
-    if (count >= MAX_PROFILES) {
-      throw new ConflictError("You can have up to 5 profiles.", "PROFILE_LIMIT");
+    if (count >= limit) {
+      throw new ConflictError(`Your plan allows up to ${limit} profile${limit === 1 ? "" : "s"}.`, "PROFILE_LIMIT");
     }
 
     try {

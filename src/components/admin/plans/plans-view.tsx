@@ -61,6 +61,7 @@ export function PlansView({ initialPlans }: { initialPlans: AdminPlan[] }) {
                 <TableHead className="text-right">Price / month</TableHead>
                 <TableHead>Video quality</TableHead>
                 <TableHead className="text-right">Max devices</TableHead>
+                <TableHead className="text-right">Max profiles</TableHead>
                 <TableHead className="text-right">Active subscribers</TableHead>
                 <TableHead className="text-right">All subscriptions</TableHead>
                 <TableHead className="text-right">
@@ -71,7 +72,7 @@ export function PlansView({ initialPlans }: { initialPlans: AdminPlan[] }) {
             <TableBody>
               {plans.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <Empty className="py-10 md:py-12">
                       <EmptyHeader>
                         <EmptyMedia variant="icon">
@@ -128,6 +129,7 @@ function PlanRow({ plan, onEdit, onDelete }: { plan: AdminPlan; onEdit: () => vo
         <Badge variant="outline">{plan.videoQuality}</Badge>
       </TableCell>
       <TableCell className="text-right tabular-nums">{plan.maxDevices}</TableCell>
+      <TableCell className="text-right tabular-nums">{plan.maxProfiles}</TableCell>
       <TableCell className="text-right tabular-nums">{plan.activeSubscribers.toLocaleString("en-IN")}</TableCell>
       <TableCell className="text-right tabular-nums text-muted-foreground">
         {plan.totalSubscriptions.toLocaleString("en-IN")}

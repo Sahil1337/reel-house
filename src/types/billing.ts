@@ -14,6 +14,8 @@ export interface SubscriptionPlan {
   priceMonthly: number;
   videoQuality: string;
   maxDevices: number;
+  /** How many profiles an account on this plan may have. */
+  maxProfiles: number;
 }
 
 export interface Subscription {

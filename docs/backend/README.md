@@ -126,7 +126,7 @@ src/
   hooks/                 use-media-query.ts, use-progress-sync.ts
   lib/                   CLIENT-SAFE code (no secrets, no database)
     api/                 client.ts (api.*), server.ts (serverApi.*, "server-only")
-    constants/index.ts   SESSION_COOKIE, PROFILE_COOKIE, MAX_PROFILES, ONBOARDING_MIN_GENRES,
+    constants/index.ts   SESSION_COOKIE, PROFILE_COOKIE, NO_PLAN_MAX_PROFILES, ONBOARDING_MIN_GENRES,
                          COMPLETED_THRESHOLD, AVATAR_KEYS, ...
     content/             maturity.ts, progress.ts (isCompleted)
     cookies/             profile-cookie.ts
@@ -433,7 +433,7 @@ These are the shared rules for how we write services, handle errors, use transac
   - The service validates _rules that need the database_ (exists, owned, limit, unique, belongs to) and throws a typed error.
   - Services still defensively clamp (e.g. `progressPercent`) where the CHECK is only a backstop.
 - A service never trusts the caller for money or ownership. Prices come from `subscription_plan`, and ownership comes from `user_id`/`profile_id` predicates.
-- Keep one place per rule: thresholds in `@/lib/constants` (`MAX_PROFILES`, `ONBOARDING_MIN_GENRES`, `COMPLETED_THRESHOLD`), reasons in `REASONS`.
+- Keep one place per rule: thresholds in `@/lib/constants` (`NO_PLAN_MAX_PROFILES`, `ONBOARDING_MIN_GENRES`, `COMPLETED_THRESHOLD`), reasons in `REASONS`.
 
 ### 3.2 Database errors to typed errors
 
@@ -941,7 +941,7 @@ Phase 1 is the schema work. It is done together, before anyone starts Phase 2. T
 - [ ] `payment_mode` only covers CARD / UPI / NET_BANKING / WALLET. Razorpay also reports `emi`, `paylater`, `cardless_emi`. Decide: extend the enum or ignore those events (current text: ignore + log).
 - [ ] Indexes the admin dashboard comment suggests as data grows: `payment (payment_date DESC)`, `payment (status, payment_date)`, `subscription (plan_id, status)`, `watch_history (content_id)`. `watch_history (profile_id, content_id)` is already covered by the unique key.
 - [ ] Optional `pg_trgm` GIN index on `content.title` / `person.name` if `ILIKE '%q%'` gets slow (500 titles do not need it).
-- [ ] Known limits enforced in the API, optionally with triggers: only `SERIES` content has seasons; `watch_history.episode_id` must belong to `content_id`; at most 5 profiles per user.
+- [ ] Known limits enforced in the API, optionally with triggers: only `SERIES` content has seasons; `watch_history.episode_id` must belong to `content_id`; at most `max_profiles` (current plan) profiles per user.
 - [x] `.env.example` has `DATABASE_URL` (Neon connection string).
 - [ ] Expiry of ACTIVE subscriptions past `end_date` (who flips them to EXPIRED): section 9.
 - [ ] Suggested shared helpers (pg error mapping, `toIso`): section 3.

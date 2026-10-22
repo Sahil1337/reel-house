@@ -85,6 +85,7 @@ function selectPlansWithStats() {
       priceMonthly: subscriptionPlan.priceMonthly,
       videoQuality: subscriptionPlan.videoQuality,
       maxDevices: subscriptionPlan.maxDevices,
+      maxProfiles: subscriptionPlan.maxProfiles,
       activeSubscribers:
         sql<number>`count(${subscription.subscriptionId}) filter (where ${subscription.status} = 'ACTIVE')`.mapWith(
           Number,
@@ -126,7 +127,7 @@ async function assertNameFree(name: string, exceptPlanId?: number): Promise<void
  * Every plan with its ACTIVE and total subscription counts, cheapest first.
  *
  * SQL:
- *   SELECT p.plan_id, p.name, p.price_monthly, p.video_quality, p.max_devices,
+ *   SELECT p.plan_id, p.name, p.price_monthly, p.video_quality, p.max_devices, p.max_profiles,
  *          COUNT(s.subscription_id) FILTER (WHERE s.status = 'ACTIVE') AS active_subscribers,
  *          COUNT(s.subscription_id) AS total_subscriptions
  *   FROM subscription_plan AS p
@@ -144,8 +145,8 @@ export async function listPlansWithStats(): Promise<AdminPlan[]> {
  * Adds a plan; a duplicate name (case-insensitive) answers 409 PLAN_NAME_TAKEN.
  *
  * SQL:
- *   INSERT INTO subscription_plan (name, price_monthly, video_quality, max_devices)
- *   VALUES ($1, $2, $3, $4) RETURNING *;
+ *   INSERT INTO subscription_plan (name, price_monthly, video_quality, max_devices, max_profiles)
+ *   VALUES ($1, $2, $3, $4, $5) RETURNING *;
  */
 export async function createPlan(input: CreatePlanInput): Promise<AdminPlan> {
   const name = input.name.trim();
@@ -159,6 +160,7 @@ export async function createPlan(input: CreatePlanInput): Promise<AdminPlan> {
         priceMonthly: String(input.priceMonthly),
         videoQuality: input.videoQuality,
         maxDevices: input.maxDevices,
+        maxProfiles: input.maxProfiles,
       })
       .returning();
 
@@ -188,6 +190,7 @@ export async function updatePlan(planId: number, input: UpdatePlanInput): Promis
   if (input.priceMonthly !== undefined) changes.priceMonthly = String(input.priceMonthly);
   if (input.videoQuality !== undefined) changes.videoQuality = input.videoQuality;
   if (input.maxDevices !== undefined) changes.maxDevices = input.maxDevices;
+  if (input.maxProfiles !== undefined) changes.maxProfiles = input.maxProfiles;
 
   // Nothing to change (the route's schema already rejects this): answer with the current row.
   if (Object.keys(changes).length === 0) {

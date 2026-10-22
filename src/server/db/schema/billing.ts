@@ -21,10 +21,12 @@ export const subscriptionPlan = pgTable(
     priceMonthly: numeric({ precision: 10, scale: 2 }).notNull(),
     videoQuality: varchar({ length: 10 }).notNull(), // '720p', '1080p', '4K'
     maxDevices: smallint().notNull(),
+    maxProfiles: smallint().notNull(),
   },
   (t) => [
     check("subscription_plan_price_monthly_check", sql`${t.priceMonthly} >= 0`),
     check("subscription_plan_max_devices_check", sql`${t.maxDevices} > 0`),
+    check("subscription_plan_max_profiles_check", sql`${t.maxProfiles} > 0`),
   ],
 );
 

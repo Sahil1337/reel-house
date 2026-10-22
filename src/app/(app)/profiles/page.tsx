@@ -8,13 +8,18 @@ import { ProfilePicker } from "@/components/profiles/profile-picker";
 import { SignOutButton } from "@/components/profiles/sign-out-button";
 import { Button } from "@/components/ui/button";
 import { serverApi } from "@/lib/api/server";
-import { MAX_PROFILES } from "@/lib/constants";
+import { NO_PLAN_MAX_PROFILES } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Who's watching?" };
 
 export default async function ProfilesPage({ searchParams }: PageProps<"/profiles">) {
-  const [{ manage: manageParam }, profiles] = await Promise.all([searchParams, serverApi.getProfiles()]);
+  const [{ manage: manageParam }, profiles, { subscription }] = await Promise.all([
+    searchParams,
+    serverApi.getProfiles(),
+    serverApi.getAccount(),
+  ]);
   const manage = manageParam === "1";
+  const maxProfiles = subscription?.plan.maxProfiles ?? NO_PLAN_MAX_PROFILES;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -30,12 +35,12 @@ export default async function ProfilesPage({ searchParams }: PageProps<"/profile
           </h1>
           <p className="max-w-md text-pretty text-sm text-muted-foreground sm:text-base">
             {manage
-              ? `Choose a profile to rename it, change its avatar or maturity setting. Up to ${MAX_PROFILES} per account.`
+              ? `Choose a profile to rename it, change its avatar or maturity setting. Your plan allows up to ${maxProfiles}.`
               : "Each profile has its own history, list and recommendations."}
           </p>
         </div>
 
-        <ProfilePicker profiles={profiles} manage={manage} />
+        <ProfilePicker profiles={profiles} manage={manage} maxProfiles={maxProfiles} />
 
         <Button
           variant={manage ? "default" : "outline"}

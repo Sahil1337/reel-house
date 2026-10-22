@@ -168,14 +168,15 @@ CREATE TABLE profile (
   onboarded_at   TIMESTAMPTZ                            -- NULL until onboarding is finished
 );
 CREATE UNIQUE INDEX profile_user_name_key ON profile (user_id, lower(name));
--- At most 5 profiles per user: checked in the API (a trigger would also work).
+-- At most subscription_plan.max_profiles profiles per user (1 with no current plan): checked in the API.
 
 CREATE TABLE subscription_plan (
   plan_id       INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name          VARCHAR(50)   NOT NULL UNIQUE,
   price_monthly NUMERIC(10,2) NOT NULL CHECK (price_monthly >= 0),
   video_quality VARCHAR(10)   NOT NULL,                -- '720p', '1080p', '4K'
-  max_devices   SMALLINT      NOT NULL CHECK (max_devices > 0)
+  max_devices   SMALLINT      NOT NULL CHECK (max_devices > 0),
+  max_profiles  SMALLINT      NOT NULL CHECK (max_profiles > 0)
 );
 
 CREATE TABLE subscription (
@@ -624,7 +625,7 @@ trigger (database code that runs automatically on writes):
 
 - Only `SERIES` content may have seasons.
 - A `watch_history.episode_id` must belong to the row's `content_id`.
-- At most 5 profiles per user.
+- At most `max_profiles` (from the user's current plan, 1 with none) profiles per user.
 
 ## Domain names → column names
 

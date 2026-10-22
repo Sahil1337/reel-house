@@ -7,7 +7,8 @@
  *                totalSubscriptions (any status; > 0 blocks deleting the plan)
  *                401 / 403 not an admin
  * POST request:  body { name (1-50 chars, trimmed), priceMonthly (>= 0, at most 2 decimals),
- *                videoQuality ("720p" | "1080p" | "4K"), maxDevices (integer 1-32767) }
+ *                videoQuality ("720p" | "1080p" | "4K"), maxDevices (integer 1-32767),
+ *                maxProfiles (integer 1-32767) }
  * POST response: 201 { plan: AdminPlan }  the new plan, with 0 subscribers
  *                400 body isn't JSON · 401 / 403 not an admin · 422 { error } a field breaks its rule
  *                409 { error, code: "PLAN_NAME_TAKEN" } another plan has that name

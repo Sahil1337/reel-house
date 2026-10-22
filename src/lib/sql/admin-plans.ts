@@ -9,7 +9,7 @@ import type { SqlParam, SqlStatement, UpdatePlanInput } from "@/types";
 
 import { statement } from "./literal";
 
-const PLAN_COLUMNS = "plan_id, name, price_monthly, video_quality, max_devices";
+const PLAN_COLUMNS = "plan_id, name, price_monthly, video_quality, max_devices, max_profiles";
 
 /** Column per editable field, in the order the SET list and the INSERT use. */
 const COLUMN_OF = {
@@ -17,11 +17,12 @@ const COLUMN_OF = {
   priceMonthly: "price_monthly",
   videoQuality: "video_quality",
   maxDevices: "max_devices",
+  maxProfiles: "max_profiles",
 } as const;
 
 type PlanField = keyof typeof COLUMN_OF;
 
-const FIELDS: PlanField[] = ["name", "priceMonthly", "videoQuality", "maxDevices"];
+const FIELDS: PlanField[] = ["name", "priceMonthly", "videoQuality", "maxDevices", "maxProfiles"];
 
 /** A usable SQL parameter: finite numbers and strings pass, everything else shows as NULL. */
 function param(value: string | number | null | undefined): SqlParam {
@@ -35,15 +36,16 @@ export function buildCreatePlanSql(input: {
   priceMonthly?: number;
   videoQuality?: string;
   maxDevices?: number;
+  maxProfiles?: number;
 }): SqlStatement[] {
   return [
     statement({
       step: 1,
       title: "Insert the plan",
       explanation:
-        "plan_id is generated. UNIQUE (name) rejects a duplicate name (23505, answered as 409), and the CHECKs refuse a negative price or zero devices.",
-      sql: `INSERT INTO subscription_plan (name, price_monthly, video_quality, max_devices)
-VALUES ($1, $2, $3, $4)
+        "plan_id is generated. UNIQUE (name) rejects a duplicate name (23505, answered as 409), and the CHECKs refuse a negative price, zero devices or zero profiles.",
+      sql: `INSERT INTO subscription_plan (name, price_monthly, video_quality, max_devices, max_profiles)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING ${PLAN_COLUMNS};`,
       params: FIELDS.map((field) => param(input[field])),
       table: "subscription_plan",

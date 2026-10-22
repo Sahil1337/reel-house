@@ -6,7 +6,8 @@ export const SESSION_COOKIE = "session";
 /** Holds the selected profile id; set by the profile picker, read by server pages. */
 export const PROFILE_COOKIE = "profileId";
 
-export const MAX_PROFILES = 5;
+/** Profile limit for an account with no current plan; otherwise subscription_plan.max_profiles decides. */
+export const NO_PLAN_MAX_PROFILES = 1;
 
 /** Onboarding asks for at least this many genres. */
 export const ONBOARDING_MIN_GENRES = 3;

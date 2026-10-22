@@ -3,12 +3,19 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
 
 import { ProfileAvatar } from "@/components/profiles/profile-avatar";
-import { MAX_PROFILES } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import type { Profile, User } from "@/types";
 
 /** Who holds the account, and the profiles that watch on it. */
-export function AccountDetailsCard({ user, profiles }: { user: User; profiles: Profile[] }) {
+export function AccountDetailsCard({
+  user,
+  profiles,
+  maxProfiles,
+}: {
+  user: User;
+  profiles: Profile[];
+  maxProfiles: number;
+}) {
   const rows = [
     { label: "Email", value: user.email },
     { label: "Phone", value: user.phone ?? "Not added" },
@@ -39,7 +46,7 @@ export function AccountDetailsCard({ user, profiles }: { user: User; profiles: P
           <div className="flex items-baseline justify-between gap-4">
             <h3 className="text-sm font-medium">Profiles</h3>
             <span className="font-mono text-xs text-muted-foreground tabular-nums">
-              {profiles.length} of {MAX_PROFILES}
+              {profiles.length} of {maxProfiles}
             </span>
           </div>
           {profiles.length > 0 ? (

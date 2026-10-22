@@ -24,7 +24,7 @@ import { buildCreatePlanSql, buildUpdatePlanSql } from "@/lib/sql/admin-plans";
 import { planSchema, VIDEO_QUALITIES } from "@/lib/validation/admin";
 import type { AdminPlan, UpdatePlanInput } from "@/types";
 
-type FieldName = "name" | "priceMonthly" | "videoQuality" | "maxDevices";
+type FieldName = "name" | "priceMonthly" | "videoQuality" | "maxDevices" | "maxProfiles";
 
 const QUALITY_ITEMS = VIDEO_QUALITIES.map((quality) => ({ value: quality, label: quality }));
 
@@ -53,6 +53,7 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
   const [price, setPrice] = useState(plan ? String(plan.priceMonthly) : "");
   const [quality, setQuality] = useState<string>(plan?.videoQuality ?? VIDEO_QUALITIES[0]);
   const [devices, setDevices] = useState(plan ? String(plan.maxDevices) : "");
+  const [profiles, setProfiles] = useState(plan ? String(plan.maxProfiles) : "");
   const [touched, setTouched] = useState<Partial<Record<FieldName, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
   const [serverError, setServerError] = useState<{ message: string; code?: string } | null>(null);
@@ -67,6 +68,7 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
     priceMonthly: price.trim() === "" ? undefined : price,
     videoQuality: quality,
     maxDevices: devices.trim() === "" ? undefined : devices,
+    maxProfiles: profiles.trim() === "" ? undefined : profiles,
   });
   const issues: Partial<Record<FieldName, string>> = {};
   if (!parsed.success) {
@@ -83,7 +85,14 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
   // The SQL follows whatever is typed, valid or not (unusable values show as NULL).
   const draftPrice = price.trim() === "" ? undefined : Number(price);
   const draftDevices = devices.trim() === "" ? undefined : Number(devices);
-  const draft = { name: name.trim(), priceMonthly: draftPrice, videoQuality: quality, maxDevices: draftDevices };
+  const draftProfiles = profiles.trim() === "" ? undefined : Number(profiles);
+  const draft = {
+    name: name.trim(),
+    priceMonthly: draftPrice,
+    videoQuality: quality,
+    maxDevices: draftDevices,
+    maxProfiles: draftProfiles,
+  };
 
   const changes: UpdatePlanInput = {};
   if (plan) {
@@ -94,6 +103,9 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
     if (quality !== plan.videoQuality) changes.videoQuality = quality as UpdatePlanInput["videoQuality"];
     if (draftDevices !== undefined && Number.isFinite(draftDevices) && draftDevices !== plan.maxDevices) {
       changes.maxDevices = draftDevices;
+    }
+    if (draftProfiles !== undefined && Number.isFinite(draftProfiles) && draftProfiles !== plan.maxProfiles) {
+      changes.maxProfiles = draftProfiles;
     }
   }
   const unchanged = editing && Object.keys(changes).length === 0;
@@ -117,6 +129,7 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
         if (parsed.data.priceMonthly !== plan.priceMonthly) real.priceMonthly = parsed.data.priceMonthly;
         if (parsed.data.videoQuality !== plan.videoQuality) real.videoQuality = parsed.data.videoQuality;
         if (parsed.data.maxDevices !== plan.maxDevices) real.maxDevices = parsed.data.maxDevices;
+        if (parsed.data.maxProfiles !== plan.maxProfiles) real.maxProfiles = parsed.data.maxProfiles;
         if (Object.keys(real).length === 0) return;
         await updatePlan.mutateAsync({ planId: plan.planId, changes: real });
       } else {
@@ -144,11 +157,13 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
           {plan.activeSubscribers === 1 ? "" : "s"} keep this plan (their <code className="font-mono">plan_id</code>{" "}
           doesn&apos;t change); the new price applies from their next renewal or checkout.
         </>,
-        "Video quality and max devices are read from the plan, so a change applies to everyone on it straight away.",
+        "Video quality, max devices and max profiles are read from the plan, so a change applies to everyone on it straight away.",
+        "Lowering max profiles deletes nothing: accounts already above the new limit keep their profiles but can't add more.",
         <>
           <code className="font-mono">UNIQUE (name)</code> refuses a duplicate name (23505, shown as a 409); the CHECKs
-          keep <code className="font-mono">price_monthly &gt;= 0</code> and{" "}
-          <code className="font-mono">max_devices &gt; 0</code>.
+          keep <code className="font-mono">price_monthly &gt;= 0</code>,{" "}
+          <code className="font-mono">max_devices &gt; 0</code> and{" "}
+          <code className="font-mono">max_profiles &gt; 0</code>.
         </>,
       ]
     : [
@@ -157,8 +172,9 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
           database decides, not a SELECT first, so two admins can&apos;t both add &quot;Family&quot;.
         </>,
         <>
-          <code className="font-mono">CHECK (price_monthly &gt;= 0)</code> and{" "}
-          <code className="font-mono">CHECK (max_devices &gt; 0)</code> back up the form&apos;s validation.
+          <code className="font-mono">CHECK (price_monthly &gt;= 0)</code>,{" "}
+          <code className="font-mono">CHECK (max_devices &gt; 0)</code> and{" "}
+          <code className="font-mono">CHECK (max_profiles &gt; 0)</code> back up the form&apos;s validation.
         </>,
         "A new plan has no subscriptions yet, so it can be deleted until someone subscribes (ON DELETE RESTRICT).",
       ];
@@ -219,7 +235,22 @@ function PlanForm({ plan, onDone }: { plan: AdminPlan | null; onDone: () => void
             <FieldError match={Boolean(errorFor("maxDevices"))}>{errorFor("maxDevices")}</FieldError>
           </Field>
 
-          <Field name="videoQuality" invalid={Boolean(errorFor("videoQuality"))} className="sm:col-span-2">
+          <Field name="maxProfiles" invalid={Boolean(errorFor("maxProfiles"))}>
+            <FieldLabel>Max profiles</FieldLabel>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={profiles}
+              placeholder="5"
+              onChange={(event) => edit(setProfiles)(event.target.value)}
+              onBlur={() => setTouched((current) => ({ ...current, maxProfiles: true }))}
+            />
+            <FieldError match={Boolean(errorFor("maxProfiles"))}>{errorFor("maxProfiles")}</FieldError>
+          </Field>
+
+          <Field name="videoQuality" invalid={Boolean(errorFor("videoQuality"))}>
             <FieldLabel>Video quality</FieldLabel>
             <Select
               items={QUALITY_ITEMS}

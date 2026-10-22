@@ -72,6 +72,7 @@ export interface MockPlan {
   priceMonthly: number;
   videoQuality: string;
   maxDevices: number;
+  maxProfiles: number;
 }
 export interface MockSubscription {
   subscriptionId: number;

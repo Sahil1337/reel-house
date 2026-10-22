@@ -82,6 +82,7 @@ export async function seedBilling(tx: Tx, data: SeedData, userById: Map<number, 
         priceMonthly: p.priceMonthly.toFixed(2),
         videoQuality: shortQuality(p.videoQuality),
         maxDevices: p.maxDevices,
+        maxProfiles: p.maxProfiles,
       })),
     )
     .returning({ id: subscriptionPlan.planId });

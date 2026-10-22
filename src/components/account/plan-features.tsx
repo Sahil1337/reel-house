@@ -1,16 +1,17 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 
-import { MAX_PROFILES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { SubscriptionPlan } from "@/types";
 
-/** What a plan includes — the plan table only stores quality and screens, so the rest is shared copy. */
+/** What a plan includes: quality, screens and profiles, all read from the plan row. */
 export function planFeatures(plan: SubscriptionPlan): string[] {
   return [
     `${plan.videoQuality} streaming`,
     plan.maxDevices === 1 ? "Watch on 1 screen at a time" : `Watch on ${plan.maxDevices} screens at once`,
-    `Up to ${MAX_PROFILES} profiles, each with its own recommendations`,
+    plan.maxProfiles === 1
+      ? "1 profile with its own recommendations"
+      : `Up to ${plan.maxProfiles} profiles, each with its own recommendations`,
   ];
 }
 

@@ -219,6 +219,7 @@ export interface AdminPlan {
   priceMonthly: number;
   videoQuality: string;
   maxDevices: number;
+  maxProfiles: number;
   /** subscriptions with status ACTIVE. */
   activeSubscribers: number;
   /** subscriptions in any status; > 0 blocks deleting the plan (ON DELETE RESTRICT). */
@@ -231,6 +232,7 @@ export interface CreatePlanInput {
   priceMonthly: number;
   videoQuality: VideoQuality;
   maxDevices: number;
+  maxProfiles: number;
 }
 
 /** PATCH /api/admin/plans/:planId body: send only what changed. */

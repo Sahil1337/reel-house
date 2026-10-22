@@ -7,7 +7,6 @@ import { Add01Icon, PencilEdit02Icon } from "@hugeicons/core-free-icons";
 
 import { Spinner } from "@/components/ui/spinner";
 import { useProfileList } from "@/hooks/queries/profiles";
-import { MAX_PROFILES } from "@/lib/constants";
 import { setProfileCookie } from "@/lib/cookies/profile-cookie";
 import { cn } from "@/lib/utils";
 import type { Profile } from "@/types";
@@ -33,14 +32,22 @@ const STAGGER_MS = 50;
  * "Who's watching?" grid. In manage mode the same tiles open the edit dialog.
  * Choosing a profile stores it in the profileId cookie; edits update the grid through the cached profile list.
  */
-export function ProfilePicker({ profiles: initialProfiles, manage }: { profiles: Profile[]; manage: boolean }) {
+export function ProfilePicker({
+  profiles: initialProfiles,
+  manage,
+  maxProfiles,
+}: {
+  profiles: Profile[];
+  manage: boolean;
+  maxProfiles: number;
+}) {
   const router = useRouter();
   const { data: profiles } = useProfileList(initialProfiles);
   const [selectingId, setSelectingId] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Profile | null>(null);
 
-  const canAdd = profiles.length < MAX_PROFILES;
+  const canAdd = profiles.length < maxProfiles;
 
   function select(profile: Profile) {
     if (selectingId !== null) return;

@@ -28,7 +28,7 @@ export async function GET() {
  *           (name 1–24 chars after trim, avatar ∈ AVATAR_KEYS, maturityLevel ∈ KIDS | TEEN | ADULT)
  * Response: 201 { profile: Profile } with onboardingCompleted = false
  *           401 signed out
- *           409 { error } at the 5-profile limit, or the name is taken on this account
+ *           409 { error } at the plan's profile limit (subscription_plan.max_profiles), or the name is taken
  *           422 { error } invalid name, avatar or maturity level
  *
  * The client sends new profiles through /onboarding afterwards.

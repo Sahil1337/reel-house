@@ -80,7 +80,7 @@ export type UpdateContentFormValues = z.input<typeof updateContentSchema>;
 
 // ─── Plans ───────────────────────────────────────────────────────────────────
 
-/** subscription_plan: name UNIQUE (409 from the service), price_monthly >= 0, max_devices > 0. */
+/** subscription_plan: name UNIQUE (409 from the service), price_monthly >= 0, max_devices > 0, max_profiles > 0. */
 export const planSchema = z.object({
   name: z.string().trim().min(1, "Give the plan a name.").max(50, "Keep names under 50 characters."),
   priceMonthly: z.coerce
@@ -93,6 +93,11 @@ export const planSchema = z.object({
     .number({ error: "Enter the number of devices." })
     .int("Use a whole number.")
     .min(1, "At least one device.")
+    .max(32_767, "That's more than the column holds."),
+  maxProfiles: z.coerce
+    .number({ error: "Enter the number of profiles." })
+    .int("Use a whole number.")
+    .min(1, "At least one profile.")
     .max(32_767, "That's more than the column holds."),
 });
 

@@ -2,7 +2,7 @@
  * PATCH  /api/admin/plans/:planId — edit a plan.
  * DELETE /api/admin/plans/:planId — delete a plan nobody has subscribed to.
  *
- * PATCH request:  path planId · body, any of { name, priceMonthly, videoQuality, maxDevices } (same rules as
+ * PATCH request:  path planId · body, any of { name, priceMonthly, videoQuality, maxDevices, maxProfiles } (same rules as
  *                 POST /api/admin/plans); send only what changed, at least one field.
  *                 A price change affects future charges only: past payment.amount values are untouched and
  *                 existing subscribers keep their plan (the new price applies from their next renewal).

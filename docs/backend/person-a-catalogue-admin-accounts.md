@@ -231,7 +231,7 @@ FROM users WHERE lower(email) = lower($1);
 **Steps** (all in **one transaction**, so a failure leaves no half-created account):
 
 1. `INSERT` the `users` row. The password is already hashed by the route (`hashPassword()` from `src/server/auth/password.ts`, or bcrypt/argon2 after the upgrade). `role` is left to its default `'USER'`: sign-up never creates admins. A `UNIQUE lower(email)` violation (SQLSTATE 23505, the Postgres code for "unique violation"; constraint `users_email_key`) becomes a `ConflictError`.
-2. `INSERT` the first profile: `name` = first word of the user's name, `avatar` `'lamp'`, `maturity_level` `'ADULT'`, `onboarded_at` NULL (onboarding not done yet). Same shape as `POST /api/profiles`, but skip the 5-profile check (it is the first one).
+2. `INSERT` the first profile: `name` = first word of the user's name, `avatar` `'lamp'`, `maturity_level` `'ADULT'`, `onboarded_at` NULL (onboarding not done yet). Same shape as `POST /api/profiles`, but skip the profile-limit check (it is the first one).
 3. Return the `User` (without `password_hash`).
 
 **SQL:**
@@ -356,7 +356,7 @@ FROM profile WHERE profile_id = $1 AND user_id = $2;
 
 **Steps:**
 
-1. Lock the user row and count the user's profiles; at `MAX_PROFILES` (5, from `@/lib/constants`) -> `ConflictError`.
+1. Lock the user row and count the user's profiles; at the current plan's `max_profiles` (`NO_PLAN_MAX_PROFILES` = 1 without a plan) -> `ConflictError`.
 2. `INSERT ... RETURNING`. Names are unique per account, case-insensitively: the unique index violation (23505, `profile_user_name_key`) -> `ConflictError`.
 
 **SQL:**
@@ -372,13 +372,13 @@ RETURNING profile_id, user_id, name, avatar, maturity_level, (onboarded_at IS NO
 **Rules to respect:**
 
 - Table and key: `profile`; UNIQUE INDEX `profile_user_name_key (user_id, lower(name))`.
-- The 5-profile limit lives here, not in the schema (a trigger would also work).
+- The profile limit (`subscription_plan.max_profiles`) is checked here, not in the schema.
 - Transaction: yes, so two concurrent creates cannot both pass the count. Lock the `users` row with `SELECT ... FOR UPDATE` (a row lock that makes other transactions wait), or accept the small race. Idempotent: no.
 - `onboardingCompleted` is `false` for the new row.
 
 **Errors:**
 
-- `ConflictError` -> 409 at the limit (code `"PROFILE_LIMIT"`, message e.g. "You can have up to 5 profiles.").
+- `ConflictError` -> 409 at the limit (code `"PROFILE_LIMIT"`, message e.g. "Your plan allows up to 3 profiles.").
 - `ConflictError` -> 409 when the name is already used on this account.
 
 **Mock today:** Returns `{ ...input, profileId: number of mock profiles + 1, userId, onboardingCompleted: false }` and persists nothing (the limit and name checks are not run).
